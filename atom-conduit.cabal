@@ -1,8 +1,7 @@
 name:                atom-conduit
 version:             0.1.0.0
 synopsis:            Streaming parser/renderer for the Atom 1.0 standard (RFC 4287).
-description:
-  This library implements the Atom 1.0 syndication format (<http://tools.ietf.org/html/rfc4287>) as a 'conduit' parser/renderer.
+-- description:
 license:             OtherLicense
 license-file:        LICENSE
 author:              koral
