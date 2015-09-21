@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Lens.Getter
+import           Control.Lens.Operators
+import           Control.Lens.Setter
 import           Control.Monad
 import           Control.Monad.Catch.Pure
 import           Control.Monad.Trans.Resource
@@ -17,10 +19,9 @@ import           Data.Monoid
 import           Data.MonoTraversable
 import           Data.NonNull
 import           Data.Text                    as Text
+import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
 import           Data.XML.Types
-
-import           Network.URI
 
 import qualified Language.Haskell.HLint       as HLint (hlint)
 import           Test.QuickCheck.Instances
@@ -33,6 +34,7 @@ import           Text.Atom.Conduit.Render     as Renderer
 import           Text.Atom.Types
 import           Text.Parser.Combinators
 
+import           URI.ByteString
 
 main :: IO ()
 main = defaultMain $ testGroup "Tests"
@@ -53,21 +55,21 @@ unitTests = testGroup "Unit tests"
 
 properties :: TestTree
 properties = testGroup "Properties"
-  [ inverseAtomTextProperty
-  , inverseAtomPersonProperty
-  , inverseAtomCategoryProperty
-  , inverseAtomLinkProperty
-  , inverseAtomGeneratorProperty
-  , inverseAtomSourceProperty
-  , inverseAtomContentProperty
-  , inverseAtomEntryProperty
-  -- , inverseAtomFeedProperty
+  [ roundtripAtomTextProperty
+  , roundtripAtomPersonProperty
+  , roundtripAtomCategoryProperty
+  , roundtripAtomLinkProperty
+  , roundtripAtomGeneratorProperty
+  , roundtripAtomSourceProperty
+  , roundtripAtomContentProperty
+  , roundtripAtomEntryProperty
+  -- , roundtripAtomFeedProperty
   ]
 
 linkCase :: TestTree
 linkCase = testCase "Link element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser atomLink
-  show (result ^. linkHref_) @?= "/feed"
+  result ^. linkHref_ @?= UriReferenceRelativeRef (RelativeRef Nothing "/feed" (Query []) Nothing)
   (result ^. linkRel_) @?= "self"
   where input = ["<link rel=\"self\" href=\"/feed\" />"]
 
@@ -76,7 +78,7 @@ personCase = testCase "Person construct" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser (atomPerson "author")
   toNullable (result ^. personName_) @?= "John Doe"
   result ^. personEmail_ @?= "JohnDoe@example.com"
-  show <$> (result ^. personUri_) @?= Just "http://example.com/~johndoe"
+  result ^. personUri_ @?= Just (UriReferenceUri $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
   where input =
           [ "<author>"
           , "<name>John Doe</name>"
@@ -88,7 +90,7 @@ personCase = testCase "Person construct" $ do
 generatorCase :: TestTree
 generatorCase = testCase "Generator element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser atomGenerator
-  show <$> (result ^. generatorUri_) @?= Just "/myblog.php"
+  result ^. generatorUri_ @?= Just (UriReferenceRelativeRef $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
   (result ^. generatorVersion_) @?= "1.0"
   toNullable (result ^. generatorContent_) @?= "Example Toolkit"
   where input =
@@ -162,69 +164,92 @@ hlint = testCase "HLint check" $ do
   Prelude.null result @?= True
 
 
-inverseAtomTextProperty :: TestTree
-inverseAtomTextProperty = testProperty "parse . render = id (AtomText)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomText "test" i =$= runConduitParser (atomText "test"))
+roundtripAtomTextProperty :: TestTree
+roundtripAtomTextProperty = testProperty "parse . render = id (AtomText)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomText "test" i =$= runConduitParser (atomText "test"))
 
-inverseAtomPersonProperty :: TestTree
-inverseAtomPersonProperty = testProperty "parse . render = id (AtomPerson)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomPerson "test" i =$= runConduitParser (atomPerson "test"))
+roundtripAtomPersonProperty :: TestTree
+roundtripAtomPersonProperty = testProperty "parse . render = id (AtomPerson)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomPerson "test" i =$= runConduitParser (atomPerson "test"))
 
-inverseAtomCategoryProperty :: TestTree
-inverseAtomCategoryProperty = testProperty "parse . render = id (AtomCategory)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomCategory i =$= runConduitParser atomCategory)
+roundtripAtomCategoryProperty :: TestTree
+roundtripAtomCategoryProperty = testProperty "parse . render = id (AtomCategory)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomCategory i =$= runConduitParser atomCategory)
 
-inverseAtomLinkProperty :: TestTree
-inverseAtomLinkProperty = testProperty "parse . render = id (AtomLink)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomLink i =$= runConduitParser atomLink)
+roundtripAtomLinkProperty :: TestTree
+roundtripAtomLinkProperty = testProperty "parse . render = id (AtomLink)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomLink i =$= runConduitParser atomLink)
 
-inverseAtomGeneratorProperty :: TestTree
-inverseAtomGeneratorProperty = testProperty "parse . render = id (AtomGenerator)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomGenerator i =$= runConduitParser atomGenerator)
+roundtripAtomGeneratorProperty :: TestTree
+roundtripAtomGeneratorProperty = testProperty "parse . render = id (AtomGenerator)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomGenerator i =$= runConduitParser atomGenerator)
 
-inverseAtomSourceProperty :: TestTree
-inverseAtomSourceProperty = testProperty "parse . render = id (AtomSource)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomSource i =$= runConduitParser atomSource)
+roundtripAtomSourceProperty :: TestTree
+roundtripAtomSourceProperty = testProperty "parse . render = id (AtomSource)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomSource i =$= runConduitParser atomSource)
 
-inverseAtomContentProperty :: TestTree
-inverseAtomContentProperty = testProperty "parse . render = id (AtomContent)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomContent i =$= runConduitParser atomContent)
+roundtripAtomContentProperty :: TestTree
+roundtripAtomContentProperty = testProperty "parse . render = id (AtomContent)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomContent i =$= runConduitParser atomContent)
 
-inverseAtomFeedProperty :: TestTree
-inverseAtomFeedProperty = testProperty "parse . render = id (AtomFeed)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomFeed i =$= runConduitParser atomFeed)
+roundtripAtomFeedProperty :: TestTree
+roundtripAtomFeedProperty = testProperty "parse . render = id (AtomFeed)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomFeed i =$= runConduitParser atomFeed)
 
-inverseAtomEntryProperty :: TestTree
-inverseAtomEntryProperty = testProperty "parse . render = id (AtomEntry)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomEntry i =$= runConduitParser atomEntry)
+roundtripAtomEntryProperty :: TestTree
+roundtripAtomEntryProperty = testProperty "parse . render = id (AtomEntry)" $ \i -> either (const False) (i ==) (runIdentity . runCatchT . runConduit $ renderAtomEntry i =$= runConduitParser atomEntry)
 
 
-alphaNum = oneof [choose('a', 'z'), suchThat arbitrary isDigit]
+letter = choose ('a', 'z')
+digit = arbitrary `suchThat` isDigit
+alphaNum = oneof [letter, digit]
 
 instance (MonoFoldable a, Arbitrary a) => Arbitrary (MinLen (Succ Zero) a) where
   arbitrary = nonNull <$> arbitrary `suchThat` (not . onull)
 
-instance Arbitrary URIAuth where
+instance Arbitrary Scheme where
   arbitrary = do
-    userInfo <- oneof [return "", (++ "@") <$> listOf1 alphaNum]
-    regName <- listOf1 alphaNum
-    port <- oneof [return "", (":" ++) . show <$> choose(1 :: Int, 65535)]
-    return $ URIAuth userInfo regName port
+    a <- letter
+    b <- listOf $ oneof [letter, digit, pure '+', pure '-', pure '.']
+    return $ Scheme $ encodeUtf8 $ pack (a:b)
+
+instance Arbitrary Authority where
+  arbitrary = Authority <$> arbitrary <*> arbitrary <*> arbitrary
+  shrink = genericShrink
+
+instance Arbitrary UserInfo where
+  arbitrary = UserInfo <$> (encodeUtf8 . pack <$> listOf1 alphaNum)
+                       <*> (encodeUtf8 . pack <$> listOf1 alphaNum)
+
+instance Arbitrary Host where
+  arbitrary = Host <$> (encodeUtf8 . pack <$> listOf1 alphaNum)
+
+instance Arbitrary Port where
+  arbitrary = Port <$> (getPositive <$> arbitrary)
+
+instance Arbitrary Query where
+  arbitrary = Query <$> listOf ((,) <$> (encodeUtf8 . pack <$> listOf1 alphaNum) <*> (encodeUtf8 . pack <$> listOf1 alphaNum))
 
 instance Arbitrary URI where
-  arbitrary = do
-    scheme <- (++ ":") <$> listOf1 (choose('a', 'z'))
-    path <- ("/" ++) <$> listOf1 alphaNum
-    query <- oneof [return "", ("?" ++) <$> listOf1 alphaNum]
-    fragment <- oneof [return "", ("#" ++) <$> listOf1 alphaNum]
-    authority <- arbitrary
-    return $ URI scheme authority path query fragment
+  arbitrary = URI <$> arbitrary
+                  <*> arbitrary
+                  <*> (encodeUtf8 . pack . ('/' :) <$> listOf1 alphaNum)
+                  <*> arbitrary
+                  <*> oneof [pure Nothing, Just <$> (encodeUtf8 . pack <$> listOf1 alphaNum)]
+
+instance Arbitrary UriReference where
+  arbitrary = oneof [UriReferenceUri <$> arbitrary, UriReferenceRelativeRef <$> arbitrary]
+
+instance Arbitrary RelativeRef where
+  arbitrary = RelativeRef <$> arbitrary
+                          <*> (encodeUtf8 . pack . ('/' :) <$> listOf1 alphaNum)
+                          <*> arbitrary
+                          <*> oneof [pure Nothing, Just <$> (encodeUtf8 . pack <$> listOf1 alphaNum)]
 
 instance Arbitrary TextType where
   arbitrary = elements [TypeText, TypeHTML]
-  -- shrink = genericShrink
 
 instance Arbitrary AtomText where
   arbitrary = oneof
-    [ AtomPlainText <$> arbitrary <*> arbitrary
-    , AtomXHTMLText <$> arbitrary
+    [ AtomPlainText <$> arbitrary <*> (pack <$> listOf1 alphaNum)
+    , AtomXHTMLText <$> (pack <$> listOf1 alphaNum)
     ]
   shrink = genericShrink
 
 instance Arbitrary AtomPerson where
   arbitrary = AtomPerson <$> arbitrary <*> arbitrary <*> arbitrary
-  -- shrink = genericShrink
 
 instance Arbitrary AtomCategory where
   arbitrary = AtomCategory <$> arbitrary <*> arbitrary <*> arbitrary
@@ -233,14 +258,15 @@ instance Arbitrary AtomLink where
   arbitrary = AtomLink <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 instance Arbitrary AtomGenerator where
-  arbitrary = AtomGenerator <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = do
+    Just content <- fromNullable . pack <$> listOf1 alphaNum
+    AtomGenerator <$> arbitrary <*> arbitrary <*> pure content
   shrink = genericShrink
 
 instance Arbitrary AtomSource where
   arbitrary = do
     updated <- oneof [return Nothing, Just <$> genUtcTime]
     AtomSource <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> pure updated
-  -- shrink = genericShrink
 
 instance Arbitrary AtomContent where
   arbitrary = oneof
