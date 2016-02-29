@@ -18,9 +18,9 @@ module Text.Atom.Conduit.Render
   ) where
 
 -- {{{ Imports
+import           Text.Atom.Lens
 import           Text.Atom.Types
 
-import           Control.Lens.Getter
 import           Control.Monad
 
 import           Data.Conduit
@@ -33,6 +33,8 @@ import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
 
+import           Lens.Simple
+
 import           Text.XML.Stream.Render
 
 import           URI.ByteString
@@ -41,41 +43,41 @@ import           URI.ByteString
 -- | Render the top-level @atom:feed@ element.
 renderAtomFeed :: (Monad m) => AtomFeed -> Source m Event
 renderAtomFeed f = tag "feed" (attr "xmlns" "http://www.w3.org/2005/Atom") $ do
-  forM_ (f^.feedAuthors_) $ renderAtomPerson "author"
-  forM_ (f^.feedCategories_) renderAtomCategory
-  forM_ (f^.feedContributors_) $ renderAtomPerson "contributor"
-  forM_ (f^.feedEntries_) renderAtomEntry
-  forM_ (f^.feedGenerator_) renderAtomGenerator
-  forM_ (f^.feedIcon_) $ tag "icon" mempty . content . decodeUtf8 . serializeUriReference'
-  tag "id" mempty . content . toNullable $ f^.feedId_
-  forM_ (f^.feedLinks_) renderAtomLink
-  forM_ (f^.feedLogo_) $ tag "logo" mempty . content . decodeUtf8 . serializeUriReference'
-  forM_ (f^.feedRights_) $ renderAtomText "rights"
-  forM_ (f^.feedSubtitle_) $ renderAtomText "subtitle"
-  renderAtomText "title" $ f^.feedTitle_
-  dateTag "updated" $ f^.feedUpdated_
+  forM_ (f^.feedAuthorsL) $ renderAtomPerson "author"
+  forM_ (f^.feedCategoriesL) renderAtomCategory
+  forM_ (f^.feedContributorsL) $ renderAtomPerson "contributor"
+  forM_ (f^.feedEntriesL) renderAtomEntry
+  forM_ (f^.feedGeneratorL) renderAtomGenerator
+  forM_ (feedIcon f) $ tag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  tag "id" mempty . content . toNullable $ f^.feedIdL
+  forM_ (f^.feedLinksL) renderAtomLink
+  forM_ (feedLogo f) $ tag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  forM_ (f^.feedRightsL) $ renderAtomText "rights"
+  forM_ (f^.feedSubtitleL) $ renderAtomText "subtitle"
+  renderAtomText "title" $ f^.feedTitleL
+  dateTag "updated" $ f^.feedUpdatedL
 
 -- | Render an @atom:entry@ element.
 renderAtomEntry :: (Monad m) => AtomEntry -> Source m Event
 renderAtomEntry e = tag "entry" mempty $ do
-  forM_ (e^.entryAuthors_) $ renderAtomPerson "author"
-  forM_ (e^.entryCategories_) renderAtomCategory
-  forM_ (e^.entryContent_) renderAtomContent
-  forM_ (e^.entryContributors_) $ renderAtomPerson "contributor"
-  tag "id" mempty . content . toNullable $ e^.entryId_
-  forM_ (e^.entryLinks_) renderAtomLink
-  forM_ (e^.entryPublished_) $ dateTag "published"
-  forM_ (e^.entryRights_) $ renderAtomText "rights"
-  forM_ (e^.entrySource_) renderAtomSource
-  forM_ (e^.entrySummary_) $ renderAtomText "summary"
-  renderAtomText "title" (e^.entryTitle_)
-  dateTag "updated" (e^.entryUpdated_)
+  forM_ (e^.entryAuthorsL) $ renderAtomPerson "author"
+  forM_ (e^.entryCategoriesL) renderAtomCategory
+  forM_ (e^.entryContentL) renderAtomContent
+  forM_ (e^.entryContributorsL) $ renderAtomPerson "contributor"
+  tag "id" mempty . content . toNullable $ e^.entryIdL
+  forM_ (e^.entryLinksL) renderAtomLink
+  forM_ (e^.entryPublishedL) $ dateTag "published"
+  forM_ (e^.entryRightsL) $ renderAtomText "rights"
+  forM_ (e^.entrySourceL) renderAtomSource
+  forM_ (e^.entrySummaryL) $ renderAtomText "summary"
+  renderAtomText "title" (e^.entryTitleL)
+  dateTag "updated" (e^.entryUpdatedL)
 
 -- | Render an @atom:content@ element.
 renderAtomContent :: (Monad m) => AtomContent -> Source m Event
 renderAtomContent (AtomContentInlineXHTML t) = tag "content" (attr "type" "xhtml")
   . tag "div" mempty $ content t
-renderAtomContent (AtomContentOutOfLine ctype uri) = tag "content" (nonEmptyAttr "type" ctype <> attr "src" (decodeUtf8 $ serializeUriReference' uri)) $ return ()
+renderAtomContent (AtomContentOutOfLine ctype uri) = tag "content" (nonEmptyAttr "type" ctype <> attr "src" (decodeUtf8 $ withAtomURI serializeURIRef' uri)) $ return ()
 renderAtomContent (AtomContentInlineText TypeHTML t) = tag "content" (attr "type" "html") $ content t
 renderAtomContent (AtomContentInlineText TypeText t) = tag "content" mempty $ content t
 renderAtomContent (AtomContentInlineOther ctype t) = tag "content" (attr "type" ctype) $ content t
@@ -83,48 +85,48 @@ renderAtomContent (AtomContentInlineOther ctype t) = tag "content" (attr "type" 
 -- | Render an @atom:source@ element.
 renderAtomSource :: (Monad m) => AtomSource -> Source m Event
 renderAtomSource s = tag "source" mempty $ do
-  forM_ (s^.sourceAuthors_) $ renderAtomPerson "author"
-  forM_ (s^.sourceCategories_) renderAtomCategory
-  forM_ (s^.sourceContributors_) $ renderAtomPerson "contributor"
-  forM_ (s^.sourceGenerator_) renderAtomGenerator
-  forM_ (s^.sourceIcon_) $ tag "icon" mempty . content . decodeUtf8 . serializeUriReference'
-  unless (Text.null $ s^.sourceId_) . tag "id" mempty . content $ s^.sourceId_
-  forM_ (s^.sourceLinks_) renderAtomLink
-  forM_ (s^.sourceLogo_) $ tag "logo" mempty . content . decodeUtf8 . serializeUriReference'
-  forM_ (s^.sourceRights_) $ renderAtomText "rights"
-  forM_ (s^.sourceSubtitle_) $ renderAtomText "subtitle"
-  forM_ (s^.sourceTitle_) $ renderAtomText "title"
-  forM_ (s^.sourceUpdated_) $ dateTag "updated"
+  forM_ (s^.sourceAuthorsL) $ renderAtomPerson "author"
+  forM_ (s^.sourceCategoriesL) renderAtomCategory
+  forM_ (s^.sourceContributorsL) $ renderAtomPerson "contributor"
+  forM_ (s^.sourceGeneratorL) renderAtomGenerator
+  forM_ (sourceIcon s) $ tag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  unless (Text.null $ s^.sourceIdL) . tag "id" mempty . content $ s^.sourceIdL
+  forM_ (s^.sourceLinksL) renderAtomLink
+  forM_ (sourceLogo s) $ tag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  forM_ (s^.sourceRightsL) $ renderAtomText "rights"
+  forM_ (s^.sourceSubtitleL) $ renderAtomText "subtitle"
+  forM_ (s^.sourceTitleL) $ renderAtomText "title"
+  forM_ (s^.sourceUpdatedL) $ dateTag "updated"
 
 -- | Render an @atom:generator@ element.
 renderAtomGenerator :: (Monad m) => AtomGenerator -> Source m Event
-renderAtomGenerator g = tag "generator" attributes . content . toNullable $ g^.generatorContent_
-  where attributes = optionalAttr "uri" (decodeUtf8 . serializeUriReference' <$> g^.generatorUri_)
-                     <> nonEmptyAttr "version" (g^.generatorVersion_)
+renderAtomGenerator g = tag "generator" attributes . content . toNullable $ g^.generatorContentL
+  where attributes = optionalAttr "uri" (decodeUtf8 . withAtomURI serializeURIRef' <$> generatorUri g)
+                     <> nonEmptyAttr "version" (g^.generatorVersionL)
 
 -- | Render an @atom:link@ element.
 renderAtomLink :: (Monad m) => AtomLink -> Source m Event
 renderAtomLink l = tag "link" linkAttrs $ return ()
-  where linkAttrs = attr "href" (decodeUtf8 . serializeUriReference' $ l^.linkHref_)
-                    <> nonEmptyAttr "rel" (l^.linkRel_)
-                    <> nonEmptyAttr "type" (l^.linkType_)
-                    <> nonEmptyAttr "hreflang" (l^.linkLang_)
-                    <> nonEmptyAttr "title" (l^.linkTitle_)
-                    <> nonEmptyAttr "length" (l^.linkLength_)
+  where linkAttrs = attr "href" (decodeUtf8 . withAtomURI serializeURIRef' $ linkHref l)
+                    <> nonEmptyAttr "rel" (l^.linkRelL)
+                    <> nonEmptyAttr "type" (l^.linkTypeL)
+                    <> nonEmptyAttr "hreflang" (l^.linkLangL)
+                    <> nonEmptyAttr "title" (l^.linkTitleL)
+                    <> nonEmptyAttr "length" (l^.linkLengthL)
 
 -- | Render an @atom:category@ element.
 renderAtomCategory :: (Monad m) => AtomCategory -> Source m Event
 renderAtomCategory c = tag "category" attributes $ return ()
-  where attributes = attr "term" (toNullable $ c^.categoryTerm_)
-                     <> nonEmptyAttr "scheme" (c^.categoryScheme_)
-                     <> nonEmptyAttr "label" (c^.categoryLabel_)
+  where attributes = attr "term" (toNullable $ c^.categoryTermL)
+                     <> nonEmptyAttr "scheme" (c^.categorySchemeL)
+                     <> nonEmptyAttr "label" (c^.categoryLabelL)
 
 -- | Render an atom person construct.
 renderAtomPerson :: (Monad m) => Name -> AtomPerson -> Source m Event
 renderAtomPerson name p = tag name mempty $ do
-  tag "name" mempty . content . toNullable $ p^.personName_
-  unless (Text.null $ p^.personEmail_) $ tag "email" mempty . content $ p^.personEmail_
-  forM_ (p^.personUri_) $ tag "uri" mempty . content . decodeUtf8 . serializeUriReference'
+  tag "name" mempty . content . toNullable $ p^.personNameL
+  unless (Text.null $ p^.personEmailL) $ tag "email" mempty . content $ p^.personEmailL
+  forM_ (personUri p) $ tag "uri" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
 
 -- | Render an atom text construct.
 renderAtomText :: (Monad m) => Name -> AtomText -> Source m Event
@@ -141,7 +143,3 @@ nonEmptyAttr :: Name -> Text -> Attributes
 nonEmptyAttr name value
   | value == mempty = mempty
   | otherwise = attr name value
-
--- serializeUriReference' :: UriReference -> ByteString
-serializeUriReference' (UriReferenceUri u) = serializeURI' u
-serializeUriReference' (UriReferenceRelativeRef r) = serializeRelativeRef' r

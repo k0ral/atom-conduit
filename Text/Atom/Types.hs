@@ -1,9 +1,9 @@
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-}
 -- | Atom is an XML-based Web content and metadata syndication format.
 --
 -- Example:
@@ -31,30 +31,38 @@
 module Text.Atom.Types where
 
 -- {{{ Imports
-import           Control.Lens.Combinators
-
 import           Data.NonNull
-import           Data.Text                hiding (map)
+import           Data.Text           hiding (map)
 import           Data.Time.Clock
-import           Data.Time.LocalTime      ()
+import           Data.Time.LocalTime ()
 
 import           GHC.Generics
 
 import           URI.ByteString
 -- }}}
 
-data TextType = TypeText | TypeHTML
-  deriving(Eq, Generic, Show)
 
--- | Either a 'URI', or a 'RelativeRef' (as defined by RFC 3986)
-data UriReference = UriReferenceUri URI | UriReferenceRelativeRef RelativeRef
+data AtomURI = forall a . AtomURI (URIRef a)
+
+withAtomURI :: (forall a . URIRef a -> b) -> AtomURI -> b
+withAtomURI f (AtomURI a) = f a
+
+
+instance Eq AtomURI where
+  AtomURI a@URI{} == AtomURI b@URI{} = a == b
+  AtomURI a@RelativeRef{} == AtomURI b@RelativeRef{} = a == b
+  _ == _ = False
+instance Show AtomURI where
+  show (AtomURI a@URI{}) = show a
+  show (AtomURI a@RelativeRef{}) = show a
+
+
+data TextType = TypeText | TypeHTML
   deriving(Eq, Generic, Show)
 
 -- | An atom text construct.
 data AtomText = AtomPlainText TextType Text
               | AtomXHTMLText Text
-
-makePrisms ''AtomText
 
 deriving instance Eq AtomText
 deriving instance Generic AtomText
@@ -62,12 +70,10 @@ deriving instance Show AtomText
 
 -- | An atom person construct.
 data AtomPerson = AtomPerson
-  { _personName_  :: NonNull Text
-  , _personEmail_ :: Text
-  , _personUri_   :: Maybe UriReference
+  { personName  :: NonNull Text
+  , personEmail :: Text
+  , personUri   :: Maybe AtomURI
   }
-
-makeLenses ''AtomPerson
 
 deriving instance Eq AtomPerson
 deriving instance Generic AtomPerson
@@ -75,12 +81,10 @@ deriving instance Show AtomPerson
 
 -- | The @atom:category@ element.
 data AtomCategory = AtomCategory
-  { _categoryTerm_   :: NonNull Text
-  , _categoryScheme_ :: Text
-  , _categoryLabel_  :: Text
+  { categoryTerm   :: NonNull Text
+  , categoryScheme :: Text
+  , categoryLabel  :: Text
   }
-
-makeLenses ''AtomCategory
 
 deriving instance Eq AtomCategory
 deriving instance Generic AtomCategory
@@ -88,15 +92,13 @@ deriving instance Show AtomCategory
 
 -- | The @atom:link@ element.
 data AtomLink = AtomLink
-  { _linkHref_   :: UriReference
-  , _linkRel_    :: Text
-  , _linkType_   :: Text
-  , _linkLang_   :: Text
-  , _linkTitle_  :: Text
-  , _linkLength_ :: Text
+  { linkHref   :: AtomURI
+  , linkRel    :: Text
+  , linkType   :: Text
+  , linkLang   :: Text
+  , linkTitle  :: Text
+  , linkLength :: Text
   }
-
-makeLenses ''AtomLink
 
 deriving instance Eq AtomLink
 deriving instance Generic AtomLink
@@ -104,12 +106,10 @@ deriving instance Show AtomLink
 
 -- | The @atom:generator@ element.
 data AtomGenerator = AtomGenerator
-  { _generatorUri_     :: Maybe UriReference
-  , _generatorVersion_ :: Text
-  , _generatorContent_ :: NonNull Text
+  { generatorUri     :: Maybe AtomURI
+  , generatorVersion :: Text
+  , generatorContent :: NonNull Text
   }
-
-makeLenses ''AtomGenerator
 
 deriving instance Eq AtomGenerator
 deriving instance Generic AtomGenerator
@@ -117,21 +117,19 @@ deriving instance Show AtomGenerator
 
 -- | The @atom:source@ element.
 data AtomSource = AtomSource
-  { _sourceAuthors_      :: [AtomPerson]
-  , _sourceCategories_   :: [AtomCategory]
-  , _sourceContributors_ :: [AtomPerson]
-  , _sourceGenerator_    :: Maybe AtomGenerator
-  , _sourceIcon_         :: Maybe UriReference
-  , _sourceId_           :: Text
-  , _sourceLinks_        :: [AtomLink]
-  , _sourceLogo_         :: Maybe UriReference
-  , _sourceRights_       :: Maybe AtomText
-  , _sourceSubtitle_     :: Maybe AtomText
-  , _sourceTitle_        :: Maybe AtomText
-  , _sourceUpdated_      :: Maybe UTCTime
+  { sourceAuthors      :: [AtomPerson]
+  , sourceCategories   :: [AtomCategory]
+  , sourceContributors :: [AtomPerson]
+  , sourceGenerator    :: Maybe AtomGenerator
+  , sourceIcon         :: Maybe AtomURI
+  , sourceId           :: Text
+  , sourceLinks        :: [AtomLink]
+  , sourceLogo         :: Maybe AtomURI
+  , sourceRights       :: Maybe AtomText
+  , sourceSubtitle     :: Maybe AtomText
+  , sourceTitle        :: Maybe AtomText
+  , sourceUpdated      :: Maybe UTCTime
   }
-
-makeLenses ''AtomSource
 
 deriving instance Eq AtomSource
 deriving instance Generic AtomSource
@@ -143,7 +141,7 @@ type Type = Text
 data AtomContent = AtomContentInlineText TextType Text
                  | AtomContentInlineXHTML Text
                  | AtomContentInlineOther Type Text
-                 | AtomContentOutOfLine Type UriReference
+                 | AtomContentOutOfLine Type AtomURI
 
 deriving instance Eq AtomContent
 deriving instance Generic AtomContent
@@ -151,21 +149,19 @@ deriving instance Show AtomContent
 
 -- | The @atom:entry@ element.
 data AtomEntry = AtomEntry
-  { _entryAuthors_      :: [AtomPerson]
-  , _entryCategories_   :: [AtomCategory]
-  , _entryContent_      :: Maybe AtomContent
-  , _entryContributors_ :: [AtomPerson]
-  , _entryId_           :: NonNull Text
-  , _entryLinks_        :: [AtomLink]
-  , _entryPublished_    :: Maybe UTCTime
-  , _entryRights_       :: Maybe AtomText
-  , _entrySource_       :: Maybe AtomSource
-  , _entrySummary_      :: Maybe AtomText
-  , _entryTitle_        :: AtomText
-  , _entryUpdated_      :: UTCTime
+  { entryAuthors      :: [AtomPerson]
+  , entryCategories   :: [AtomCategory]
+  , entryContent      :: Maybe AtomContent
+  , entryContributors :: [AtomPerson]
+  , entryId           :: NonNull Text
+  , entryLinks        :: [AtomLink]
+  , entryPublished    :: Maybe UTCTime
+  , entryRights       :: Maybe AtomText
+  , entrySource       :: Maybe AtomSource
+  , entrySummary      :: Maybe AtomText
+  , entryTitle        :: AtomText
+  , entryUpdated      :: UTCTime
   }
-
-makeLenses ''AtomEntry
 
 deriving instance Eq AtomEntry
 deriving instance Generic AtomEntry
@@ -173,22 +169,20 @@ deriving instance Show AtomEntry
 
 -- | The @atom:feed@ element.
 data AtomFeed = AtomFeed
-  { _feedAuthors_      :: [AtomPerson]
-  , _feedCategories_   :: [AtomCategory]
-  , _feedContributors_ :: [AtomPerson]
-  , _feedEntries_      :: [AtomEntry]
-  , _feedGenerator_    :: Maybe AtomGenerator
-  , _feedIcon_         :: Maybe UriReference
-  , _feedId_           :: NonNull Text
-  , _feedLinks_        :: [AtomLink]
-  , _feedLogo_         :: Maybe UriReference
-  , _feedRights_       :: Maybe AtomText
-  , _feedSubtitle_     :: Maybe AtomText
-  , _feedTitle_        :: AtomText
-  , _feedUpdated_      :: UTCTime
+  { feedAuthors      :: [AtomPerson]
+  , feedCategories   :: [AtomCategory]
+  , feedContributors :: [AtomPerson]
+  , feedEntries      :: [AtomEntry]
+  , feedGenerator    :: Maybe AtomGenerator
+  , feedIcon         :: Maybe AtomURI
+  , feedId           :: NonNull Text
+  , feedLinks        :: [AtomLink]
+  , feedLogo         :: Maybe AtomURI
+  , feedRights       :: Maybe AtomText
+  , feedSubtitle     :: Maybe AtomText
+  , feedTitle        :: AtomText
+  , feedUpdated      :: UTCTime
   }
-
-makeLenses ''AtomFeed
 
 deriving instance Eq AtomFeed
 deriving instance Generic AtomFeed

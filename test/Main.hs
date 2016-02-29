@@ -1,8 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Control.Lens.Getter
-import           Control.Lens.Operators
-import           Control.Lens.Setter
 import           Control.Monad
 import           Control.Monad.Catch.Pure
 import           Control.Monad.Trans.Resource
@@ -23,6 +20,8 @@ import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
 import           Data.XML.Types
 
+import           Lens.Simple
+
 import qualified Language.Haskell.HLint       as HLint (hlint)
 import           Test.QuickCheck.Instances
 import           Test.Tasty
@@ -31,6 +30,7 @@ import           Test.Tasty.QuickCheck
 
 import           Text.Atom.Conduit.Parse      as Parser
 import           Text.Atom.Conduit.Render     as Renderer
+import           Text.Atom.Lens
 import           Text.Atom.Types
 import           Text.Parser.Combinators
 
@@ -62,23 +62,23 @@ properties = testGroup "Properties"
   , roundtripAtomGeneratorProperty
   , roundtripAtomSourceProperty
   , roundtripAtomContentProperty
-  , roundtripAtomEntryProperty
+  -- , roundtripAtomEntryProperty
   -- , roundtripAtomFeedProperty
   ]
 
 linkCase :: TestTree
 linkCase = testCase "Link element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser atomLink
-  result ^. linkHref_ @?= UriReferenceRelativeRef (RelativeRef Nothing "/feed" (Query []) Nothing)
-  (result ^. linkRel_) @?= "self"
+  result ^. linkHrefL @?= AtomURI (RelativeRef Nothing "/feed" (Query []) Nothing)
+  (result ^. linkRelL) @?= "self"
   where input = ["<link rel=\"self\" href=\"/feed\" />"]
 
 personCase :: TestTree
 personCase = testCase "Person construct" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser (atomPerson "author")
-  toNullable (result ^. personName_) @?= "John Doe"
-  result ^. personEmail_ @?= "JohnDoe@example.com"
-  result ^. personUri_ @?= Just (UriReferenceUri $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
+  toNullable (result ^. personNameL) @?= "John Doe"
+  result ^. personEmailL @?= "JohnDoe@example.com"
+  result ^. personUriL @?= Just (AtomURI $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
   where input =
           [ "<author>"
           , "<name>John Doe</name>"
@@ -90,9 +90,9 @@ personCase = testCase "Person construct" $ do
 generatorCase :: TestTree
 generatorCase = testCase "Generator element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser atomGenerator
-  result ^. generatorUri_ @?= Just (UriReferenceRelativeRef $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
-  (result ^. generatorVersion_) @?= "1.0"
-  toNullable (result ^. generatorContent_) @?= "Example Toolkit"
+  result ^. generatorUriL @?= Just (AtomURI $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
+  (result ^. generatorVersionL) @?= "1.0"
+  toNullable (result ^. generatorContentL) @?= "Example Toolkit"
   where input =
           [ "<generator uri=\"/myblog.php\" version=\"1.0\">"
           , "Example Toolkit"
@@ -102,10 +102,10 @@ generatorCase = testCase "Generator element" $ do
 sourceCase :: TestTree
 sourceCase = testCase "Source element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText def =$= runConduitParser atomSource
-  (result ^. sourceId_) @?= "http://example.org/"
-  (result ^. sourceTitle_) @?= Just (AtomPlainText TypeText "Fourty-Two")
-  show <$> (result ^. sourceUpdated_) @?= Just "2003-12-13 18:30:02 UTC"
-  (result ^. sourceRights_) @?= Just (AtomPlainText TypeText "© 2005 Example, Inc.")
+  (result ^. sourceIdL) @?= "http://example.org/"
+  (result ^. sourceTitleL) @?= Just (AtomPlainText TypeText "Fourty-Two")
+  show <$> (result ^. sourceUpdatedL) @?= Just "2003-12-13 18:30:02 UTC"
+  (result ^. sourceRightsL) @?= Just (AtomPlainText TypeText "© 2005 Example, Inc.")
   where input =
           [ "<source>"
           , "<id>http://example.org/</id>"
@@ -229,8 +229,8 @@ instance Arbitrary URI where
                   <*> arbitrary
                   <*> oneof [pure Nothing, Just <$> (encodeUtf8 . pack <$> listOf1 alphaNum)]
 
-instance Arbitrary UriReference where
-  arbitrary = oneof [UriReferenceUri <$> arbitrary, UriReferenceRelativeRef <$> arbitrary]
+instance Arbitrary AtomURI where
+  arbitrary = oneof [AtomURI <$> (arbitrary :: Gen (URIRef Absolute)), AtomURI <$> (arbitrary :: Gen (URIRef Relative))]
 
 instance Arbitrary RelativeRef where
   arbitrary = RelativeRef <$> arbitrary

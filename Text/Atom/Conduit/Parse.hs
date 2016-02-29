@@ -28,7 +28,6 @@ import           Text.Atom.Types
 
 import           Control.Applicative
 import           Control.Foldl           hiding (mconcat, set)
-import           Control.Lens.TH
 import           Control.Monad           hiding (foldM)
 import           Control.Monad.Catch
 
@@ -45,6 +44,8 @@ import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
 
+import           Lens.Simple
+
 import           Prelude                 hiding (last, lookup)
 
 import           Text.Parser.Combinators
@@ -57,15 +58,16 @@ data AtomException = InvalidURI URIParseError
                    | NullElement
 
 deriving instance Eq AtomException
-instance Show AtomException where
-  show (InvalidURI e) = "Invalid URI reference: " ++ show e
-  show NullElement = "Null element."
-instance Exception AtomException
+deriving instance Show AtomException
 
-asUriReference :: (MonadThrow m) => Text -> m UriReference
-asUriReference t = case (parseURI' t, parseRelativeRef' t) of
-  (Right u, _) -> return $ UriReferenceUri u
-  (_, Right u) -> return $ UriReferenceRelativeRef u
+instance Exception AtomException where
+  displayException (InvalidURI e) = "Invalid URI reference: " ++ show e
+  displayException NullElement = "Null element"
+
+asURIReference :: (MonadThrow m) => Text -> m AtomURI
+asURIReference t = case (parseURI' t, parseRelativeRef' t) of
+  (Right u, _) -> return $ AtomURI u
+  (_, Right u) -> return $ AtomURI u
   (Left _, Left e) -> throwM $ InvalidURI e
   where parseURI' = parseURI laxURIParserOptions . encodeUtf8
         parseRelativeRef' = parseRelativeRef laxURIParserOptions . encodeUtf8
@@ -91,9 +93,9 @@ unknownTag = anyTag $ \_ _ -> void $ many (void unknownTag <|> void textContent)
 atomId :: (MonadCatch m) => ConduitParser Event m (NonNull Text)
 atomId = tagIgnoreAttrs' "id" $ content asNonNull
 
-atomIcon, atomLogo :: (MonadCatch m) => ConduitParser Event m UriReference
-atomIcon = tagIgnoreAttrs' "icon" $ content asUriReference
-atomLogo = tagIgnoreAttrs' "logo" $ content asUriReference
+atomIcon, atomLogo :: (MonadCatch m) => ConduitParser Event m AtomURI
+atomIcon = tagIgnoreAttrs' "icon" $ content asURIReference
+atomLogo = tagIgnoreAttrs' "logo" $ content asURIReference
 
 lastRequired :: (Monad m, Parsing m) => String -> FoldM m a a
 lastRequired e = FoldM (\_ a -> return $ Right a) (return $ Left e) (either unexpected return)
@@ -102,10 +104,10 @@ lastRequired e = FoldM (\_ a -> return $ Right a) (return $ Left e) (either unex
 
 data PersonPiece = PersonName (NonNull Text)
                  | PersonEmail Text
-                 | PersonUri UriReference
+                 | PersonUri AtomURI
                  | PersonUnknown
 
-makePrisms ''PersonPiece
+makeTraversals ''PersonPiece
 
 -- | Parse an Atom person construct.
 -- Example:
@@ -125,7 +127,7 @@ atomPerson name = named ("Atom person construct <" <> name <> ">") $ tagIgnoreAt
   where piece :: (MonadCatch m) => ConduitParser Event m PersonPiece
         piece = choice [ PersonName <$> tagIgnoreAttrs' "name" (content asNonNull)
                        , PersonEmail <$> tagIgnoreAttrs' "email" textContent
-                       , PersonUri <$> tagIgnoreAttrs' "uri" (content asUriReference)
+                       , PersonUri <$> tagIgnoreAttrs' "uri" (content asURIReference)
                        , PersonUnknown <$ unknownTag
                        ]
 
@@ -146,7 +148,7 @@ atomCategory = tagName' "category" categoryAttrs $ \(t, s, l) -> do
 -- | Parse an @atom:content@ element.
 atomContent :: (MonadCatch m) => ConduitParser Event m AtomContent
 atomContent = tagName' "content" contentAttrs handler
-  where contentAttrs = (,) <$> optional (textAttr "type") <*> optional (attr "src" asUriReference) <* ignoreAttrs
+  where contentAttrs = (,) <$> optional (textAttr "type") <*> optional (attr "src" asURIReference) <* ignoreAttrs
         handler (Just "xhtml", _) = AtomContentInlineXHTML <$> tagIgnoreAttrs' "div" textContent
         handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
         handler (Just "html", _) = AtomContentInlineText TypeHTML <$> textContent
@@ -162,7 +164,7 @@ atomContent = tagName' "content" contentAttrs handler
 atomLink :: (MonadCatch m) => ConduitParser Event m AtomLink
 atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length') ->
   return $ AtomLink href rel ltype lang title length'
-  where linkAttrs = (,,,,,) <$> attr "href" asUriReference
+  where linkAttrs = (,,,,,) <$> attr "href" asURIReference
                             <*> (textAttr "rel" <|> pure mempty)
                             <*> (textAttr "type" <|> pure mempty)
                             <*> (textAttr "hreflang" <|> pure mempty)
@@ -205,24 +207,24 @@ atomText name = named ("Atom text construct <" <> name <> ">") $ tagName' name (
 -- > </generator>
 atomGenerator :: (MonadCatch m) => ConduitParser Event m AtomGenerator
 atomGenerator = tagName' "generator" generatorAttrs $ \(uri, version) -> AtomGenerator uri version <$> (asNonNull =<< textContent)
-  where generatorAttrs = (,) <$> optional (attr "uri" asUriReference) <*> (textAttr "version" <|> pure mempty) <* ignoreAttrs
+  where generatorAttrs = (,) <$> optional (attr "uri" asURIReference) <*> (textAttr "version" <|> pure mempty) <* ignoreAttrs
 
 
 data SourcePiece = SourceAuthor AtomPerson
                  | SourceCategory AtomCategory
                  | SourceContributor AtomPerson
                  | SourceGenerator AtomGenerator
-                 | SourceIcon UriReference
+                 | SourceIcon AtomURI
                  | SourceId Text
                  | SourceLink AtomLink
-                 | SourceLogo UriReference
+                 | SourceLogo AtomURI
                  | SourceRights AtomText
                  | SourceSubtitle AtomText
                  | SourceTitle AtomText
                  | SourceUpdated UTCTime
                  | SourceUnknown
 
-makePrisms ''SourcePiece
+makeTraversals ''SourcePiece
 
 -- | Parse an @atom:source@ element.
 -- Example:
@@ -280,7 +282,7 @@ data EntryPiece = EntryAuthor      AtomPerson
                 | EntryUpdated     UTCTime
                 | EntryUnknown
 
-makePrisms ''EntryPiece
+makeTraversals ''EntryPiece
 
 -- | Parse an @atom:entry@ element.
 atomEntry :: (MonadCatch m) => ConduitParser Event m AtomEntry
@@ -321,17 +323,17 @@ data FeedPiece = FeedAuthor AtomPerson
                | FeedContributor AtomPerson
                | FeedEntry AtomEntry
                | FeedGenerator AtomGenerator
-               | FeedIcon UriReference
+               | FeedIcon AtomURI
                | FeedId (NonNull Text)
                | FeedLink AtomLink
-               | FeedLogo UriReference
+               | FeedLogo AtomURI
                | FeedRights AtomText
                | FeedSubtitle AtomText
                | FeedTitle AtomText
                | FeedUpdated UTCTime
                | FeedUnknown
 
-makePrisms ''FeedPiece
+makeTraversals ''FeedPiece
 
 -- | Parse an @atom:feed@ element.
 atomFeed :: (MonadCatch m) => ConduitParser Event m AtomFeed
