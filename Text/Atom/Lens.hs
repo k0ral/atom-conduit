@@ -3,11 +3,12 @@
 module Text.Atom.Lens where
 
 -- {{{ Imports
-import           Lens.Simple
+import           Lens.Micro
+import           Lens.Micro.TH
 
 import           Text.Atom.Types
 
-import           URI.ByteString
+-- import           URI.ByteString
 -- }}}
 
 makeLensesFor
@@ -87,4 +88,10 @@ makeLensesFor
   , ("sourceUpdated", "sourceUpdatedL")
   ] ''AtomSource
 
-makeTraversals ''AtomText
+atomPlainTextL :: Applicative f => (AtomText -> f AtomText) -> AtomText -> f AtomText
+atomPlainTextL f a@(AtomPlainText _ _) = f a
+atomPlainTextL f a = pure a
+
+atomXHTMLTextL :: Applicative f => (AtomText -> f AtomText) -> AtomText -> f AtomText
+atomXHTMLTextL f a@(AtomXHTML _) = f a
+atomXHTMLTextL f a = pure a

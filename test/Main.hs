@@ -20,7 +20,7 @@ import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
 import           Data.XML.Types
 
-import           Lens.Simple
+import           Lens.Micro
 
 import qualified Language.Haskell.HLint       as HLint (hlint)
 import           Test.QuickCheck.Instances

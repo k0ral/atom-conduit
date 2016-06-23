@@ -33,7 +33,7 @@ import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
 
-import           Lens.Simple
+import           Lens.Micro
 
 import           Text.XML.Stream.Render
 

@@ -28,7 +28,8 @@ library
     , conduit-parse
     , exceptions
     , foldl
-    , lens-simple
+    , microlens
+    , microlens-th
     , mono-traversable
     , parsers
     , text
@@ -51,7 +52,7 @@ test-suite Tests
                  data-default,
                  exceptions,
                  hlint,
-                 lens-simple,
+                 microlens,
                  mono-traversable,
                  parsers,
                  quickcheck-instances,
