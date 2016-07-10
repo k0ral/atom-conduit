@@ -29,7 +29,7 @@ library
     , exceptions
     , foldl
     , lens-simple
-    , mono-traversable
+    , mono-traversable >= 1.0.0.1
     , parsers
     , text
     , time >= 1.5
@@ -52,7 +52,7 @@ test-suite Tests
                  exceptions,
                  hlint,
                  lens-simple,
-                 mono-traversable,
+                 mono-traversable >= 1.0.0.1,
                  parsers,
                  quickcheck-instances,
                  resourcet,

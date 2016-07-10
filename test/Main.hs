@@ -11,7 +11,6 @@ import           Data.Conduit.Parser
 import           Data.Conduit.Parser.XML      as XML
 import           Data.Default
 import           Data.Functor.Identity
-import           Data.MinLen
 import           Data.Monoid
 import           Data.MonoTraversable
 import           Data.NonNull
@@ -196,8 +195,8 @@ letter = choose ('a', 'z')
 digit = arbitrary `suchThat` isDigit
 alphaNum = oneof [letter, digit]
 
-instance (MonoFoldable a, Arbitrary a) => Arbitrary (MinLen (Succ Zero) a) where
-  arbitrary = nonNull <$> arbitrary `suchThat` (not . onull)
+instance (MonoFoldable a, Arbitrary a) => Arbitrary (NonNull a) where
+  arbitrary = impureNonNull <$> arbitrary `suchThat` (not . onull)
 
 instance Arbitrary Scheme where
   arbitrary = do
