@@ -1,8 +1,8 @@
 name:                atom-conduit
-version:             0.3.1.2
+version:             0.4.0.0
 synopsis:            Streaming parser/renderer for the Atom 1.0 standard (RFC 4287).
 description:         Please refer to README.
-license:             OtherLicense
+license:             PublicDomain
 license-file:        LICENSE
 author:              koral
 maintainer:          koral att mailoo dott org
