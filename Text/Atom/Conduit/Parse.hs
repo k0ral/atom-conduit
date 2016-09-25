@@ -24,20 +24,21 @@ module Text.Atom.Conduit.Parse
   ) where
 
 -- {{{ Imports
-import           Text.Atom.Types
+import           Blaze.ByteString.Builder (toByteString)
 
-import           Control.Applicative
-import           Control.Foldl           hiding (mconcat, set)
-import           Control.Monad           hiding (foldM)
-import           Control.Monad.Catch
+import           Conduit                  (foldC, headC, headDefC, sinkList)
 
-import           Data.Conduit.Parser
-import           Data.Conduit.Parser.XML
+import           Control.Applicative      hiding (many)
+import           Control.Exception.Safe   as Exception
+import           Control.Monad            hiding (foldM)
+import           Control.Monad.Fix
+
+import           Data.Conduit
 import           Data.Maybe
 import           Data.Monoid
 import           Data.MonoTraversable
-import           Data.NonNull            (NonNull, fromNullable, toNullable)
-import           Data.Text               as Text (Text)
+import           Data.NonNull             (NonNull, fromNullable, toNullable)
+import           Data.Text                as Text (Text, unpack)
 import           Data.Text.Encoding
 import           Data.Time.Clock
 import           Data.Time.LocalTime
@@ -46,66 +47,82 @@ import           Data.XML.Types
 
 import           Lens.Simple
 
-import           Prelude                 hiding (last, lookup)
+import           Prelude                  hiding (last, lookup)
 
-import           Text.Parser.Combinators
+import           Text.Atom.Types
+import           Text.XML.Stream.Parse
+import qualified Text.XML.Stream.Render   as Render
 
 import           URI.ByteString
 -- }}}
 
 -- {{{ Util
-data AtomException = InvalidURI URIParseError
+data AtomException = InvalidDate Text
+                   | InvalidURI URIParseError
+                   | MissingElement Text
                    | NullElement
 
 deriving instance Eq AtomException
 deriving instance Show AtomException
 
 instance Exception AtomException where
-  displayException (InvalidURI e) = "Invalid URI reference: " ++ show e
-  displayException NullElement = "Null element"
+  displayException (InvalidDate t)    = "Invalid date: " ++ unpack t
+  displayException (InvalidURI e)     = "Invalid URI reference: " ++ show e
+  displayException (MissingElement t) = "Missing element: " ++ unpack t
+  displayException NullElement        = "Null element"
 
-asURIReference :: (MonadThrow m) => Text -> m AtomURI
+asURIReference :: MonadThrow m => Text -> m AtomURI
 asURIReference t = case (parseURI' t, parseRelativeRef' t) of
-  (Right u, _) -> return $ AtomURI u
-  (_, Right u) -> return $ AtomURI u
+  (Right u, _)     -> return $ AtomURI u
+  (_, Right u)     -> return $ AtomURI u
   (Left _, Left e) -> throwM $ InvalidURI e
   where parseURI' = parseURI laxURIParserOptions . encodeUtf8
         parseRelativeRef' = parseRelativeRef laxURIParserOptions . encodeUtf8
 
 asNonNull :: (MonoFoldable a, MonadThrow m) => a -> m (NonNull a)
-asNonNull = maybe (throwM NullElement) return . fromNullable
+asNonNull = liftMaybe NullElement . fromNullable
+
+liftMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a
+liftMaybe e = maybe (throw e) return
 
 -- | Like 'tagName' but ignores the namespace.
-tagName' :: (MonadCatch m) => Text -> AttrParser a -> (a -> ConduitParser Event m b) -> ConduitParser Event m b
+tagName' :: MonadThrow m => Text -> AttrParser a -> (a -> ConduitM Event o m b) -> ConduitM Event o m (Maybe b)
 tagName' t = tagPredicate (\n -> nameLocalName n == t)
 
 -- | Tag which content is a date-time that follows RFC 3339 format.
-tagDate :: (MonadCatch m) => Text -> ConduitParser Event m UTCTime
-tagDate name = tagIgnoreAttrs' name $ content (fmap zonedTimeToUTC . parseTimeRFC3339)
+tagDate :: MonadThrow m => Text -> ConduitM Event o m (Maybe UTCTime)
+tagDate name = tagIgnoreAttrs' name $ do
+  text <- content
+  zonedTimeToUTC <$> liftMaybe (InvalidDate text) (parseTimeRFC3339 text)
 
 -- | Like 'tagName'' but ignores all attributes.
-tagIgnoreAttrs' :: (MonadCatch m) => Text -> ConduitParser Event m a -> ConduitParser Event m a
+tagIgnoreAttrs' :: MonadThrow m => Text -> ConduitM Event o m a -> ConduitM Event o m (Maybe a)
 tagIgnoreAttrs' name handler = tagName' name ignoreAttrs $ const handler
 
-unknownTag :: (MonadCatch m) => ConduitParser Event m ()
-unknownTag = anyTag $ \_ _ -> void $ many (void unknownTag <|> void textContent)
 
-atomId :: (MonadCatch m) => ConduitParser Event m (NonNull Text)
-atomId = tagIgnoreAttrs' "id" $ content asNonNull
+projectC :: Monad m => Fold a a' b b' -> Conduit a m b
+projectC prism = fix $ \recurse -> do
+  item <- await
+  case (item, item ^? (_Just . prism)) of
+    (_, Just a) -> yield a >> recurse
+    (Just _, _) -> recurse
+    _           -> return ()
 
-atomIcon, atomLogo :: (MonadCatch m) => ConduitParser Event m AtomURI
-atomIcon = tagIgnoreAttrs' "icon" $ content asURIReference
-atomLogo = tagIgnoreAttrs' "logo" $ content asURIReference
+headRequiredC :: MonadThrow m => Text -> Consumer a m a
+headRequiredC e = liftMaybe (MissingElement e) =<< headC
 
-lastRequired :: (Monad m, Parsing m) => String -> FoldM m a a
-lastRequired e = FoldM (\_ a -> return $ Right a) (return $ Left e) (either unexpected return)
+atomId :: MonadThrow m => ConduitM Event o m (Maybe Text)
+atomId = tagIgnoreAttrs' "id" content
+
+atomIcon, atomLogo :: MonadThrow m => ConduitM Event o m (Maybe AtomURI)
+atomIcon = tagIgnoreAttrs' "icon" $ content >>= asURIReference
+atomLogo = tagIgnoreAttrs' "logo" $ content >>= asURIReference
 -- }}}
 
 
 data PersonPiece = PersonName (NonNull Text)
                  | PersonEmail Text
                  | PersonUri AtomURI
-                 | PersonUnknown
 
 makeTraversals ''PersonPiece
 
@@ -117,43 +134,40 @@ makeTraversals ''PersonPiece
 -- >   <email>JohnDoe@example.com</email>
 -- >   <uri>http://example.com/~johndoe</uri>
 -- > </author>
-atomPerson :: (MonadCatch m) => Text -> ConduitParser Event m AtomPerson
-atomPerson name = named ("Atom person construct <" <> name <> ">") $ tagIgnoreAttrs' name $ do
-  p <- many piece
-  flip foldM p $ AtomPerson
-    <$> handlesM _PersonName (lastRequired "Missing or invalid <name> element.")
-    <*> generalize (handles _PersonEmail $ lastDef "")
-    <*> generalize (handles _PersonUri last)
-  where piece :: (MonadCatch m) => ConduitParser Event m PersonPiece
-        piece = choice [ PersonName <$> tagIgnoreAttrs' "name" (content asNonNull)
-                       , PersonEmail <$> tagIgnoreAttrs' "email" textContent
-                       , PersonUri <$> tagIgnoreAttrs' "uri" (content asURIReference)
-                       , PersonUnknown <$ unknownTag
-                       ]
+atomPerson :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomPerson)
+atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) =$= parser) <* many ignoreAllTreesContent where
+  parser = getZipConduit $ AtomPerson
+    <$> ZipConduit (projectC _PersonName =$= headRequiredC "Missing or invalid <name> element")
+    <*> ZipConduit (projectC _PersonEmail =$= headDefC "")
+    <*> ZipConduit (projectC _PersonUri =$= headC)
+  piece = [ fmap PersonName <$> tagIgnoreAttrs' "name" (content >>= asNonNull)
+          , fmap PersonEmail <$> tagIgnoreAttrs' "email" content
+          , fmap PersonUri <$> tagIgnoreAttrs' "uri" (content >>= asURIReference)
+          ]
 
 
 -- | Parse an @atom:category@ element.
 -- Example:
 --
 -- > <category term="sports"/>
-atomCategory :: (MonadCatch m) => ConduitParser Event m AtomCategory
+atomCategory :: MonadThrow m => ConduitM Event o m (Maybe AtomCategory)
 atomCategory = tagName' "category" categoryAttrs $ \(t, s, l) -> do
   term <- asNonNull t
   return $ AtomCategory term s l
-  where categoryAttrs = (,,) <$> textAttr "term"
-                             <*> (textAttr "scheme" <|> pure mempty)
-                             <*> (textAttr "label" <|> pure mempty)
+  where categoryAttrs = (,,) <$> requireAttr "term"
+                             <*> (requireAttr "scheme" <|> pure mempty)
+                             <*> (requireAttr "label" <|> pure mempty)
                              <* ignoreAttrs
 
 -- | Parse an @atom:content@ element.
-atomContent :: (MonadCatch m) => ConduitParser Event m AtomContent
-atomContent = tagName' "content" contentAttrs handler
-  where contentAttrs = (,) <$> optional (textAttr "type") <*> optional (attr "src" asURIReference) <* ignoreAttrs
-        handler (Just "xhtml", _) = AtomContentInlineXHTML <$> tagIgnoreAttrs' "div" textContent
-        handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
-        handler (Just "html", _) = AtomContentInlineText TypeHTML <$> textContent
-        handler (Nothing, _) = AtomContentInlineText TypeText <$> textContent
-        handler (Just ctype, _) = AtomContentInlineOther ctype <$> textContent
+atomContent :: MonadThrow m => ConduitM Event o m (Maybe AtomContent)
+atomContent = tagName' "content" contentAttrs handler where
+  contentAttrs = (,) <$> optional (requireAttr "type") <*> optional (requireAttr "src" >>= asURIReference) <* ignoreAttrs
+  handler (Just "xhtml", _) = AtomContentInlineXHTML <$> force "<div>" (tagIgnoreAttrs' "div" content)
+  handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
+  handler (Just "html", _) = AtomContentInlineText TypeHTML <$> content
+  handler (Nothing, _) = AtomContentInlineText TypeText <$> content
+  handler (Just ctype, _) = AtomContentInlineOther ctype <$> content
 
 -- | Parse an @atom:link@ element.
 -- Examples:
@@ -161,15 +175,15 @@ atomContent = tagName' "content" contentAttrs handler
 -- > <link rel="self" href="/feed" />
 --
 -- > <link rel="alternate" href="/blog/1234"/>
-atomLink :: (MonadCatch m) => ConduitParser Event m AtomLink
+atomLink :: MonadThrow m => ConduitM Event o m (Maybe AtomLink)
 atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length') ->
   return $ AtomLink href rel ltype lang title length'
-  where linkAttrs = (,,,,,) <$> attr "href" asURIReference
-                            <*> (textAttr "rel" <|> pure mempty)
-                            <*> (textAttr "type" <|> pure mempty)
-                            <*> (textAttr "hreflang" <|> pure mempty)
-                            <*> (textAttr "title" <|> pure mempty)
-                            <*> (textAttr "length" <|> pure mempty)
+  where linkAttrs = (,,,,,) <$> (requireAttr "href" >>= asURIReference)
+                            <*> (requireAttr "rel" <|> pure mempty)
+                            <*> (requireAttr "type" <|> pure mempty)
+                            <*> (requireAttr "hreflang" <|> pure mempty)
+                            <*> (requireAttr "title" <|> pure mempty)
+                            <*> (requireAttr "length" <|> pure mempty)
                             <* ignoreAttrs
 
 -- | Parse an Atom text construct.
@@ -186,18 +200,12 @@ atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length')
 -- >     AT&amp;T bought <b>by SBC</b>!
 -- >   </div>
 -- > </title>
-atomText :: (MonadCatch m) => Text -> ConduitParser Event m AtomText
-atomText name = named ("Atom text construct <" <> name <> ">") $ tagName' name (optional (textAttr "type") <* ignoreAttrs) handler
-  where handler (Just "xhtml") = AtomXHTMLText <$> tagIgnoreAttrs' "div" xhtmlContent
-        handler (Just "html") = AtomPlainText TypeHTML <$> textContent
-        handler _ = AtomPlainText TypeText <$> textContent
-        xhtmlContent :: MonadCatch m => ConduitParser Event m Text
-        xhtmlContent = mconcat <$> many (textContent <|> anyTag (\name attrs -> renderTag name attrs <$> xhtmlContent))
-        renderTag name attrs content = "<" <> nameLocalName name <> renderAttrs attrs <> ">" <> content <> "</" <> nameLocalName name <> ">"
-        renderAttrs [] = ""
-        renderAttrs ((name, content):t) = " " <> nameLocalName name <> "=\"" <> mconcat (renderContent <$> content) <> "\"" <> renderAttrs t
-        renderContent (ContentText t) = t
-        renderContent (ContentEntity t) = t
+atomText :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomText)
+atomText name = tagName' name (optional (requireAttr "type") <* ignoreAttrs) handler
+  where handler (Just "xhtml") = AtomXHTMLText <$> force "<div>" (tagIgnoreAttrs' "div" xhtmlContent)
+        handler (Just "html") = AtomPlainText TypeHTML <$> content
+        handler _ = AtomPlainText TypeText <$> content
+        xhtmlContent = fmap (decodeUtf8 . toByteString) $ takeAllTreesContent =$= Render.renderBuilder def =$= foldC
 
 -- | Parse an @atom:generator@ element.
 -- Example:
@@ -205,9 +213,9 @@ atomText name = named ("Atom text construct <" <> name <> ">") $ tagName' name (
 -- > <generator uri="/myblog.php" version="1.0">
 -- >   Example Toolkit
 -- > </generator>
-atomGenerator :: (MonadCatch m) => ConduitParser Event m AtomGenerator
-atomGenerator = tagName' "generator" generatorAttrs $ \(uri, version) -> AtomGenerator uri version <$> (asNonNull =<< textContent)
-  where generatorAttrs = (,) <$> optional (attr "uri" asURIReference) <*> (textAttr "version" <|> pure mempty) <* ignoreAttrs
+atomGenerator :: MonadThrow m => ConduitM Event o m (Maybe AtomGenerator)
+atomGenerator = tagName' "generator" generatorAttrs $ \(uri, version) -> AtomGenerator uri version <$> (asNonNull =<< content)
+  where generatorAttrs = (,) <$> optional (requireAttr "uri" >>= asURIReference) <*> (requireAttr "version" <|> pure mempty) <* ignoreAttrs
 
 
 data SourcePiece = SourceAuthor AtomPerson
@@ -222,7 +230,6 @@ data SourcePiece = SourceAuthor AtomPerson
                  | SourceSubtitle AtomText
                  | SourceTitle AtomText
                  | SourceUpdated UTCTime
-                 | SourceUnknown
 
 makeTraversals ''SourcePiece
 
@@ -235,44 +242,41 @@ makeTraversals ''SourcePiece
 -- >   <updated>2003-12-13T18:30:02Z</updated>
 -- >   <rights>© 2005 Example, Inc.</rights>
 -- > </source>
-atomSource :: (MonadCatch m) => ConduitParser Event m AtomSource
-atomSource = named "Atom <source> element" $ tagIgnoreAttrs' "source" $ do
-  p <- many piece
-  flip foldM p $ AtomSource
-    <$> generalize (handles _SourceAuthor list)
-    <*> generalize (handles _SourceCategory list)
-    <*> generalize (handles _SourceContributor list)
-    <*> generalize (handles _SourceGenerator last)
-    <*> generalize (handles _SourceIcon last)
-    <*> generalize (handles _SourceId $ lastDef "")
-    <*> generalize (handles _SourceLink list)
-    <*> generalize (handles _SourceLogo last)
-    <*> generalize (handles _SourceRights last)
-    <*> generalize (handles _SourceSubtitle last)
-    <*> generalize (handles _SourceTitle last)
-    <*> generalize (handles _SourceUpdated last)
-  where piece :: (MonadCatch m) => ConduitParser Event m SourcePiece
-        piece = choice [ SourceAuthor <$> atomPerson "author"
-                       , SourceCategory <$> atomCategory
-                       , SourceContributor <$> atomPerson "contributor"
-                       , SourceGenerator <$> atomGenerator
-                       , SourceIcon <$> atomIcon
-                       , SourceId . toNullable <$> atomId
-                       , SourceLink <$> atomLink
-                       , SourceLogo <$> atomLogo
-                       , SourceRights <$> atomText "rights"
-                       , SourceSubtitle <$> atomText "subtitle"
-                       , SourceTitle <$> atomText "title"
-                       , SourceUpdated <$> tagDate "updated"
-                       , SourceUnknown <$ unknownTag
-                       ]
+atomSource :: MonadThrow m => ConduitM Event o m (Maybe AtomSource)
+atomSource = tagIgnoreAttrs' "source" $ manyYield' (choose piece) =$= zipConduit where
+  zipConduit = getZipConduit $ AtomSource
+    <$> ZipConduit (projectC _SourceAuthor =$= sinkList)
+    <*> ZipConduit (projectC _SourceCategory =$= sinkList)
+    <*> ZipConduit (projectC _SourceContributor =$= sinkList)
+    <*> ZipConduit (projectC _SourceGenerator =$= headC)
+    <*> ZipConduit (projectC _SourceIcon =$= headC)
+    <*> ZipConduit (projectC _SourceId =$= headDefC "")
+    <*> ZipConduit (projectC _SourceLink =$= sinkList)
+    <*> ZipConduit (projectC _SourceLogo =$= headC)
+    <*> ZipConduit (projectC _SourceRights =$= headC)
+    <*> ZipConduit (projectC _SourceSubtitle =$= headC)
+    <*> ZipConduit (projectC _SourceTitle =$= headC)
+    <*> ZipConduit (projectC _SourceUpdated =$= headC)
+  piece = [ fmap SourceAuthor <$> atomPerson "author"
+          , fmap SourceCategory <$> atomCategory
+          , fmap SourceContributor <$> atomPerson "contributor"
+          , fmap SourceGenerator <$> atomGenerator
+          , fmap SourceIcon <$> atomIcon
+          , fmap SourceId <$> atomId
+          , fmap SourceLink <$> atomLink
+          , fmap SourceLogo <$> atomLogo
+          , fmap SourceRights <$> atomText "rights"
+          , fmap SourceSubtitle <$> atomText "subtitle"
+          , fmap SourceTitle <$> atomText "title"
+          , fmap SourceUpdated <$> tagDate "updated"
+          ]
 
 
 data EntryPiece = EntryAuthor      AtomPerson
                 | EntryCategory    AtomCategory
                 | EntryContent     AtomContent
                 | EntryContributor AtomPerson
-                | EntryId          (NonNull Text)
+                | EntryId          Text
                 | EntryLink        AtomLink
                 | EntryPublished   UTCTime
                 | EntryRights      AtomText
@@ -280,42 +284,38 @@ data EntryPiece = EntryAuthor      AtomPerson
                 | EntrySummary     AtomText
                 | EntryTitle       AtomText
                 | EntryUpdated     UTCTime
-                | EntryUnknown
 
 makeTraversals ''EntryPiece
 
 -- | Parse an @atom:entry@ element.
-atomEntry :: (MonadCatch m) => ConduitParser Event m AtomEntry
-atomEntry = named "Atom <entry> element" $ tagIgnoreAttrs' "entry" $ do
-  p <- many piece
-  flip foldM p $ AtomEntry
-    <$> generalize (handles _EntryAuthor list)
-    <*> generalize (handles _EntryCategory list)
-    <*> generalize (handles _EntryContent last)
-    <*> generalize (handles _EntryContributor list)
-    <*> handlesM _EntryId (lastRequired "Missing or invalid <id> element.")
-    <*> generalize (handles _EntryLink list)
-    <*> generalize (handles _EntryPublished last)
-    <*> generalize (handles _EntryRights last)
-    <*> generalize (handles _EntrySource last)
-    <*> generalize (handles _EntrySummary last)
-    <*> handlesM _EntryTitle (lastRequired "Missing or invalid <title> element.")
-    <*> handlesM _EntryUpdated (lastRequired "Missing or invalid <updated> element.")
-  where piece :: (MonadCatch m) => ConduitParser Event m EntryPiece
-        piece = choice [ EntryAuthor <$> atomPerson "author"
-                       , EntryCategory <$> atomCategory
-                       , EntryContent <$> atomContent
-                       , EntryContributor <$> atomPerson "contributor"
-                       , EntryId <$> atomId
-                       , EntryLink <$> atomLink
-                       , EntryPublished <$> tagDate "published"
-                       , EntryRights <$> atomText "rights"
-                       , EntrySource <$> atomSource
-                       , EntrySummary <$> atomText "summary"
-                       , EntryTitle <$> atomText "title"
-                       , EntryUpdated <$> tagDate "updated"
-                       , EntryUnknown <$ unknownTag
-                       ]
+atomEntry :: MonadThrow m => ConduitM Event o m (Maybe AtomEntry)
+atomEntry = tagIgnoreAttrs' "entry" $ manyYield' (choose piece) =$= zipConduit where
+  zipConduit = getZipConduit $ AtomEntry
+    <$> ZipConduit (projectC _EntryAuthor =$= sinkList)
+    <*> ZipConduit (projectC _EntryCategory =$= sinkList)
+    <*> ZipConduit (projectC _EntryContent =$= headC)
+    <*> ZipConduit (projectC _EntryContributor =$= sinkList)
+    <*> ZipConduit (projectC _EntryId =$= headRequiredC "Missing <id> element")
+    <*> ZipConduit (projectC _EntryLink =$= sinkList)
+    <*> ZipConduit (projectC _EntryPublished =$= headC)
+    <*> ZipConduit (projectC _EntryRights =$= headC)
+    <*> ZipConduit (projectC _EntrySource =$= headC)
+    <*> ZipConduit (projectC _EntrySummary =$= headC)
+    <*> ZipConduit (projectC _EntryTitle =$= headRequiredC "Missing or invalid <title> element.")
+    <*> ZipConduit (projectC _EntryUpdated =$= headRequiredC "Missing or invalid <updated> element.")
+  piece = [ fmap EntryAuthor <$> atomPerson "author"
+          , fmap EntryCategory <$> atomCategory
+          , fmap EntryContent <$> atomContent
+          , fmap EntryContributor <$> atomPerson "contributor"
+          , fmap EntryId <$> atomId
+          , fmap EntryLink <$> atomLink
+          , fmap EntryPublished <$> tagDate "published"
+          , fmap EntryRights <$> atomText "rights"
+          , fmap EntrySource <$> atomSource
+          , fmap EntrySummary <$> atomText "summary"
+          , fmap EntryTitle <$> atomText "title"
+          , fmap EntryUpdated <$> tagDate "updated"
+          ]
 
 
 data FeedPiece = FeedAuthor AtomPerson
@@ -324,48 +324,44 @@ data FeedPiece = FeedAuthor AtomPerson
                | FeedEntry AtomEntry
                | FeedGenerator AtomGenerator
                | FeedIcon AtomURI
-               | FeedId (NonNull Text)
+               | FeedId Text
                | FeedLink AtomLink
                | FeedLogo AtomURI
                | FeedRights AtomText
                | FeedSubtitle AtomText
                | FeedTitle AtomText
                | FeedUpdated UTCTime
-               | FeedUnknown
 
 makeTraversals ''FeedPiece
 
 -- | Parse an @atom:feed@ element.
-atomFeed :: (MonadCatch m) => ConduitParser Event m AtomFeed
-atomFeed = named "Atom <feed> element" $ tagIgnoreAttrs' "feed" $ do
-  p <- many piece
-  flip foldM p $ AtomFeed
-    <$> generalize (handles _FeedAuthor list)
-    <*> generalize (handles _FeedCategory list)
-    <*> generalize (handles _FeedContributor list)
-    <*> generalize (handles _FeedEntry list)
-    <*> generalize (handles _FeedGenerator last)
-    <*> generalize (handles _FeedIcon last)
-    <*> handlesM _FeedId (lastRequired "Missing or empty <id> element.")
-    <*> generalize (handles _FeedLink list)
-    <*> generalize (handles _FeedLogo last)
-    <*> generalize (handles _FeedRights last)
-    <*> generalize (handles _FeedSubtitle last)
-    <*> handlesM _FeedTitle (lastRequired "Missing <title> element.")
-    <*> handlesM _FeedUpdated (lastRequired "Missing <updated> element.")
-  where piece :: MonadCatch m => ConduitParser Event m FeedPiece
-        piece = choice [ FeedAuthor <$> atomPerson "author"
-                       , FeedCategory <$> atomCategory
-                       , FeedContributor <$> atomPerson "contributor"
-                       , FeedEntry <$> atomEntry
-                       , FeedGenerator <$> atomGenerator
-                       , FeedIcon <$> atomIcon
-                       , FeedId <$> atomId
-                       , FeedLink <$> atomLink
-                       , FeedLogo <$> atomLogo
-                       , FeedRights <$> atomText "rights"
-                       , FeedSubtitle <$> atomText "subtitle"
-                       , FeedTitle <$> atomText "title"
-                       , FeedUpdated <$> tagDate "updated"
-                       , FeedUnknown <$ unknownTag
-                       ]
+atomFeed :: MonadThrow m => ConduitM Event o m (Maybe AtomFeed)
+atomFeed = tagIgnoreAttrs' "feed" $ manyYield' (choose piece) =$= zipConduit where
+  zipConduit = getZipConduit $ AtomFeed
+    <$> ZipConduit (projectC _FeedAuthor =$= sinkList)
+    <*> ZipConduit (projectC _FeedCategory =$= sinkList)
+    <*> ZipConduit (projectC _FeedContributor =$= sinkList)
+    <*> ZipConduit (projectC _FeedEntry =$= sinkList)
+    <*> ZipConduit (projectC _FeedGenerator =$= headC)
+    <*> ZipConduit (projectC _FeedIcon =$= headC)
+    <*> ZipConduit (projectC _FeedId =$= headRequiredC "Missing <id> element")
+    <*> ZipConduit (projectC _FeedLink =$= sinkList)
+    <*> ZipConduit (projectC _FeedLogo =$= headC)
+    <*> ZipConduit (projectC _FeedRights =$= headC)
+    <*> ZipConduit (projectC _FeedSubtitle =$= headC)
+    <*> ZipConduit (projectC _FeedTitle =$= headRequiredC "Missing <title> element.")
+    <*> ZipConduit (projectC _FeedUpdated =$= headRequiredC "Missing <updated> element.")
+  piece = [ fmap FeedAuthor <$> atomPerson "author"
+          , fmap FeedCategory <$> atomCategory
+          , fmap FeedContributor <$> atomPerson "contributor"
+          , fmap FeedEntry <$> atomEntry
+          , fmap FeedGenerator <$> atomGenerator
+          , fmap FeedIcon <$> atomIcon
+          , fmap FeedId <$> atomId
+          , fmap FeedLink <$> atomLink
+          , fmap FeedLogo <$> atomLogo
+          , fmap FeedRights <$> atomText "rights"
+          , fmap FeedSubtitle <$> atomText "subtitle"
+          , fmap FeedTitle <$> atomText "title"
+          , fmap FeedUpdated <$> tagDate "updated"
+          ]

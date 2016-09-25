@@ -49,7 +49,7 @@ renderAtomFeed f = tag "feed" (attr "xmlns" "http://www.w3.org/2005/Atom") $ do
   forM_ (f^.feedEntriesL) renderAtomEntry
   forM_ (f^.feedGeneratorL) renderAtomGenerator
   forM_ (feedIcon f) $ tag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
-  tag "id" mempty . content . toNullable $ f^.feedIdL
+  tag "id" mempty . content $ f^.feedIdL
   forM_ (f^.feedLinksL) renderAtomLink
   forM_ (feedLogo f) $ tag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
   forM_ (f^.feedRightsL) $ renderAtomText "rights"
@@ -64,7 +64,7 @@ renderAtomEntry e = tag "entry" mempty $ do
   forM_ (e^.entryCategoriesL) renderAtomCategory
   forM_ (e^.entryContentL) renderAtomContent
   forM_ (e^.entryContributorsL) $ renderAtomPerson "contributor"
-  tag "id" mempty . content . toNullable $ e^.entryIdL
+  tag "id" mempty . content $ e^.entryIdL
   forM_ (e^.entryLinksL) renderAtomLink
   forM_ (e^.entryPublishedL) $ dateTag "published"
   forM_ (e^.entryRightsL) $ renderAtomText "rights"

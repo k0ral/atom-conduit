@@ -62,7 +62,7 @@ data TextType = TypeText | TypeHTML
 
 -- | An atom text construct.
 data AtomText = AtomPlainText TextType Text
-              | AtomXHTMLText Text
+              | AtomXHTMLText Text -- ^ XHTML special characters will be in encoded form
 
 deriving instance Eq AtomText
 deriving instance Generic AtomText
@@ -153,7 +153,7 @@ data AtomEntry = AtomEntry
   , entryCategories   :: [AtomCategory]
   , entryContent      :: Maybe AtomContent
   , entryContributors :: [AtomPerson]
-  , entryId           :: NonNull Text
+  , entryId           :: Text
   , entryLinks        :: [AtomLink]
   , entryPublished    :: Maybe UTCTime
   , entryRights       :: Maybe AtomText
@@ -175,7 +175,7 @@ data AtomFeed = AtomFeed
   , feedEntries      :: [AtomEntry]
   , feedGenerator    :: Maybe AtomGenerator
   , feedIcon         :: Maybe AtomURI
-  , feedId           :: NonNull Text
+  , feedId           :: Text
   , feedLinks        :: [AtomLink]
   , feedLogo         :: Maybe AtomURI
   , feedRights       :: Maybe AtomText
