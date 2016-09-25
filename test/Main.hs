@@ -69,7 +69,7 @@ linkCase = testCase "Link element" $ do
   result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <link>" atomLink
   result ^. linkHrefL @?= AtomURI (RelativeRef Nothing "/feed" (Query []) Nothing)
   (result ^. linkRelL) @?= "self"
-  where input = ["<link rel=\"self\" href=\"/feed\" />"]
+  where input = ["<link xmlns=\"http://www.w3.org/2005/Atom\" rel=\"self\" href=\"/feed\" />"]
 
 personCase :: TestTree
 personCase = testCase "Person construct" $ do
@@ -78,7 +78,7 @@ personCase = testCase "Person construct" $ do
   result ^. personEmailL @?= "JohnDoe@example.com"
   result ^. personUriL @?= Just (AtomURI $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
   where input =
-          [ "<author>"
+          [ "<author xmlns=\"http://www.w3.org/2005/Atom\">"
           , "<name>John Doe</name>"
           , "<email>JohnDoe@example.com</email>"
           , "<uri>http://example.com/~johndoe</uri>"
@@ -92,7 +92,7 @@ generatorCase = testCase "Generator element" $ do
   (result ^. generatorVersionL) @?= "1.0"
   toNullable (result ^. generatorContentL) @?= "Example Toolkit"
   where input =
-          [ "<generator uri=\"/myblog.php\" version=\"1.0\">"
+          [ "<generator xmlns=\"http://www.w3.org/2005/Atom\" uri=\"/myblog.php\" version=\"1.0\">"
           , "Example Toolkit"
           , "</generator>"
           ]
@@ -105,7 +105,7 @@ sourceCase = testCase "Source element" $ do
   show <$> (result ^. sourceUpdatedL) @?= Just "2003-12-13 18:30:02 UTC"
   (result ^. sourceRightsL) @?= Just (AtomPlainText TypeText "© 2005 Example, Inc.")
   where input =
-          [ "<source>"
+          [ "<source xmlns=\"http://www.w3.org/2005/Atom\">"
           , "<id>http://example.org/</id>"
           , "<title>Fourty-Two</title>"
           , "<updated>2003-12-13T18:30:02Z</updated>"
@@ -120,11 +120,11 @@ textConstructCase = testCase "Text construct" $ do
   b @?= AtomPlainText TypeHTML "AT&amp;T bought <b>by SBC</b>!"
   c @?= AtomXHTMLText "AT&amp;T bought <b xmlns=\"http://www.w3.org/1999/xhtml\"><em>by SBC</em></b>!"
   where input =
-          [ "<title type=\"text\">AT&amp;T bought by SBC!</title>"
-          , "<title type=\"html\">"
+          [ "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"text\">AT&amp;T bought by SBC!</title>"
+          , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"html\">"
           , "AT&amp;amp;T bought &lt;b&gt;by SBC&lt;/b&gt;!"
           , "</title>"
-          , "<title type=\"xhtml\">"
+          , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"xhtml\">"
           , "<div xmlns=\"http://www.w3.org/1999/xhtml\">"
           , "AT&amp;T bought <b><em>by SBC</em></b>!"
           , "</div>"

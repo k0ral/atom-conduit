@@ -87,7 +87,7 @@ liftMaybe e = maybe (throw e) return
 
 -- | Like 'tagName' but ignores the namespace.
 tagName' :: MonadThrow m => Text -> AttrParser a -> (a -> ConduitM Event o m b) -> ConduitM Event o m (Maybe b)
-tagName' t = tagPredicate (\n -> nameLocalName n == t)
+tagName' t = tagPredicate (\n -> nameLocalName n == t && nameNamespace n == Just "http://www.w3.org/2005/Atom")
 
 -- | Tag which content is a date-time that follows RFC 3339 format.
 tagDate :: MonadThrow m => Text -> ConduitM Event o m (Maybe UTCTime)
@@ -98,6 +98,9 @@ tagDate name = tagIgnoreAttrs' name $ do
 -- | Like 'tagName'' but ignores all attributes.
 tagIgnoreAttrs' :: MonadThrow m => Text -> ConduitM Event o m a -> ConduitM Event o m (Maybe a)
 tagIgnoreAttrs' name handler = tagName' name ignoreAttrs $ const handler
+
+xhtmlContent :: MonadThrow m => ConduitM Event o m Text
+xhtmlContent = fmap (decodeUtf8 . toByteString) $ takeAllTreesContent =$= Render.renderBuilder def =$= foldC
 
 
 projectC :: Monad m => Fold a a' b b' -> Conduit a m b
@@ -163,7 +166,7 @@ atomCategory = tagName' "category" categoryAttrs $ \(t, s, l) -> do
 atomContent :: MonadThrow m => ConduitM Event o m (Maybe AtomContent)
 atomContent = tagName' "content" contentAttrs handler where
   contentAttrs = (,) <$> optional (requireAttr "type") <*> optional (requireAttr "src" >>= asURIReference) <* ignoreAttrs
-  handler (Just "xhtml", _) = AtomContentInlineXHTML <$> force "<div>" (tagIgnoreAttrs' "div" content)
+  handler (Just "xhtml", _) = AtomContentInlineXHTML <$> force "<div>" (tagIgnoreAttrs "{http://www.w3.org/1999/xhtml}div" xhtmlContent)
   handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
   handler (Just "html", _) = AtomContentInlineText TypeHTML <$> content
   handler (Nothing, _) = AtomContentInlineText TypeText <$> content
@@ -202,10 +205,9 @@ atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length')
 -- > </title>
 atomText :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomText)
 atomText name = tagName' name (optional (requireAttr "type") <* ignoreAttrs) handler
-  where handler (Just "xhtml") = AtomXHTMLText <$> force "<div>" (tagIgnoreAttrs' "div" xhtmlContent)
+  where handler (Just "xhtml") = AtomXHTMLText <$> force "<div>" (tagIgnoreAttrs "{http://www.w3.org/1999/xhtml}div" xhtmlContent)
         handler (Just "html") = AtomPlainText TypeHTML <$> content
         handler _ = AtomPlainText TypeText <$> content
-        xhtmlContent = fmap (decodeUtf8 . toByteString) $ takeAllTreesContent =$= Render.renderBuilder def =$= foldC
 
 -- | Parse an @atom:generator@ element.
 -- Example:
