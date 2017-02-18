@@ -87,7 +87,7 @@ liftMaybe e = maybe (throw e) return
 
 -- | Like 'tagName' but ignores the namespace.
 tagName' :: MonadThrow m => Text -> AttrParser a -> (a -> ConduitM Event o m b) -> ConduitM Event o m (Maybe b)
-tagName' t = tagPredicate (\n -> nameLocalName n == t && nameNamespace n == Just "http://www.w3.org/2005/Atom")
+tagName' t = tag' (matching $ \n -> nameLocalName n == t && nameNamespace n == Just "http://www.w3.org/2005/Atom")
 
 -- | Tag which content is a date-time that follows RFC 3339 format.
 tagDate :: MonadThrow m => Text -> ConduitM Event o m (Maybe UTCTime)
@@ -100,7 +100,7 @@ tagIgnoreAttrs' :: MonadThrow m => Text -> ConduitM Event o m a -> ConduitM Even
 tagIgnoreAttrs' name handler = tagName' name ignoreAttrs $ const handler
 
 xhtmlContent :: MonadThrow m => ConduitM Event o m Text
-xhtmlContent = fmap (decodeUtf8 . toByteString) $ takeAllTreesContent =$= Render.renderBuilder def =$= foldC
+xhtmlContent = fmap (decodeUtf8 . toByteString) $ many_ takeAnyTreeContent =$= Render.renderBuilder def =$= foldC
 
 
 projectC :: Monad m => Fold a a' b b' -> Conduit a m b
@@ -138,7 +138,7 @@ makeTraversals ''PersonPiece
 -- >   <uri>http://example.com/~johndoe</uri>
 -- > </author>
 atomPerson :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomPerson)
-atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) =$= parser) <* many ignoreAllTreesContent where
+atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) =$= parser) <* many ignoreAnyTreeContent where
   parser = getZipConduit $ AtomPerson
     <$> ZipConduit (projectC _PersonName =$= headRequiredC "Missing or invalid <name> element")
     <*> ZipConduit (projectC _PersonEmail =$= headDefC "")
