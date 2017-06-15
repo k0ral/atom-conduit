@@ -28,7 +28,7 @@
 -- >   </entry>
 -- >
 -- > </feed>
-module Text.Atom.Types where
+module Text.Atom.Types (module Text.Atom.Types) where
 
 -- {{{ Imports
 import           Data.NonNull

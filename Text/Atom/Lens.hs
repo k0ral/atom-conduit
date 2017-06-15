@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Text.Atom.Lens where
+module Text.Atom.Lens (module Text.Atom.Lens) where
 
 -- {{{ Imports
 import           Lens.Simple
@@ -70,7 +70,7 @@ makeLensesFor
   ] ''AtomPerson
 
 --personUriL :: Traversal' AtomPerson (URIRef a)
---personUriL inj a@AtomPerson { personUri = u } = (\x -> a { personUri = x }) <$> sequenceA (fmap inj u)
+--personUriL inj a@AtomPerson { personUri = u } = (\x -> a { personUri = x }) <$> traverse inj u
 
 makeLensesFor
   [ ("sourceAuthors", "sourceAuthorsL")
