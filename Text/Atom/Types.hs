@@ -52,19 +52,25 @@ instance Eq AtomURI where
   AtomURI a@URI{} == AtomURI b@URI{} = a == b
   AtomURI a@RelativeRef{} == AtomURI b@RelativeRef{} = a == b
   _ == _ = False
+instance Ord AtomURI where
+  AtomURI a@URI{} `compare` AtomURI b@URI{} = a `compare` b
+  AtomURI a@RelativeRef{} `compare` AtomURI b@RelativeRef{} = a `compare` b
+  AtomURI a@URI{} `compare` _ = LT
+  AtomURI a@RelativeRef{} `compare` b = b `compare` AtomURI a
 instance Show AtomURI where
   show (AtomURI a@URI{}) = show a
   show (AtomURI a@RelativeRef{}) = show a
 
 
 data TextType = TypeText | TypeHTML
-  deriving(Eq, Generic, Show)
+  deriving(Eq, Ord, Generic, Show)
 
 -- | An atom text construct.
 data AtomText = AtomPlainText TextType Text
               | AtomXHTMLText Text -- ^ XHTML special characters will be in encoded form
 
 deriving instance Eq AtomText
+deriving instance Ord AtomText
 deriving instance Generic AtomText
 deriving instance Show AtomText
 
@@ -76,6 +82,7 @@ data AtomPerson = AtomPerson
   }
 
 deriving instance Eq AtomPerson
+deriving instance Ord AtomPerson
 deriving instance Generic AtomPerson
 deriving instance Show AtomPerson
 
@@ -87,6 +94,7 @@ data AtomCategory = AtomCategory
   }
 
 deriving instance Eq AtomCategory
+deriving instance Ord AtomCategory
 deriving instance Generic AtomCategory
 deriving instance Show AtomCategory
 
@@ -101,6 +109,7 @@ data AtomLink = AtomLink
   }
 
 deriving instance Eq AtomLink
+deriving instance Ord AtomLink
 deriving instance Generic AtomLink
 deriving instance Show AtomLink
 
@@ -112,6 +121,7 @@ data AtomGenerator = AtomGenerator
   }
 
 deriving instance Eq AtomGenerator
+deriving instance Ord AtomGenerator
 deriving instance Generic AtomGenerator
 deriving instance Show AtomGenerator
 
@@ -132,6 +142,7 @@ data AtomSource = AtomSource
   }
 
 deriving instance Eq AtomSource
+deriving instance Ord AtomSource
 deriving instance Generic AtomSource
 deriving instance Show AtomSource
 
@@ -144,6 +155,7 @@ data AtomContent = AtomContentInlineText TextType Text
                  | AtomContentOutOfLine Type AtomURI
 
 deriving instance Eq AtomContent
+deriving instance Ord AtomContent
 deriving instance Generic AtomContent
 deriving instance Show AtomContent
 
@@ -164,6 +176,7 @@ data AtomEntry = AtomEntry
   }
 
 deriving instance Eq AtomEntry
+deriving instance Ord AtomEntry
 deriving instance Generic AtomEntry
 deriving instance Show AtomEntry
 
@@ -185,5 +198,6 @@ data AtomFeed = AtomFeed
   }
 
 deriving instance Eq AtomFeed
+deriving instance Ord AtomFeed
 deriving instance Generic AtomFeed
 deriving instance Show AtomFeed
