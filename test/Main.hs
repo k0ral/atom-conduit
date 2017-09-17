@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+import           Blaze.ByteString.Builder     (toByteString)
+import           Conduit                      (foldC, yieldMany)
 import           Control.Monad
 import           Control.Monad.Trans.Resource
-
 import           Data.Char
 import           Data.Conduit
-import           Data.Conduit.List
 import           Data.Default
 import           Data.Functor.Identity
 import           Data.Monoid
@@ -14,30 +14,27 @@ import           Data.NonNull
 import           Data.Text                    as Text
 import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
+import           Data.Void
 import           Data.XML.Types
-
-import           Lens.Simple
-
 import qualified Language.Haskell.HLint       as HLint (hlint)
-
+import           Lens.Simple
 import           Test.QuickCheck.Instances
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
-
 import           Text.Atom.Conduit.Parse      as Parser
 import           Text.Atom.Conduit.Render     as Renderer
 import           Text.Atom.Lens
 import           Text.Atom.Types
 import           Text.Parser.Combinators
+import Text.XML.Stream.Render        (renderBuilder)
 import qualified Text.XML.Stream.Parse        as XML
-
 import           URI.ByteString
 
 main :: IO ()
 main = defaultMain $ testGroup "Tests"
   [ unitTests
---  , properties
+  , properties
   , hlint
   ]
 
@@ -53,27 +50,27 @@ unitTests = testGroup "Unit tests"
 
 properties :: TestTree
 properties = testGroup "Properties"
-  [ roundtripAtomTextProperty
-  , roundtripAtomPersonProperty
-  , roundtripAtomCategoryProperty
-  , roundtripAtomLinkProperty
-  , roundtripAtomGeneratorProperty
-  , roundtripAtomSourceProperty
-  , roundtripAtomContentProperty
-  -- , roundtripAtomEntryProperty
-  -- , roundtripAtomFeedProperty
+  [ roundtripProperty "AtomText" (renderAtomText "test") (atomText "test")
+  , roundtripProperty "AtomPerson" (renderAtomPerson "test") (atomPerson "test")
+  , roundtripProperty "AtomCategory" renderAtomCategory atomCategory
+  , roundtripProperty "AtomLink" renderAtomLink atomLink
+  , roundtripProperty "AtomGenerator" renderAtomGenerator atomGenerator
+  , roundtripProperty "AtomSource" renderAtomSource atomSource
+  , roundtripProperty "AtomContent" renderAtomContent atomContent
+  -- , roundtripProperty "AtomEntry" renderAtomEntry atomEntry
+  -- , roundtripProperty "AtomFeed" renderAtomFeed atomFeed
   ]
 
 linkCase :: TestTree
 linkCase = testCase "Link element" $ do
-  result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <link>" atomLink
+  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <link>" atomLink
   result ^. linkHrefL @?= AtomURI (RelativeRef Nothing "/feed" (Query []) Nothing)
   (result ^. linkRelL) @?= "self"
   where input = ["<link xmlns=\"http://www.w3.org/2005/Atom\" rel=\"self\" href=\"/feed\" />"]
 
 personCase :: TestTree
 personCase = testCase "Person construct" $ do
-  result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <author>" (atomPerson "author")
+  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <author>" (atomPerson "author")
   toNullable (result ^. personNameL) @?= "John Doe"
   result ^. personEmailL @?= "JohnDoe@example.com"
   result ^. personUriL @?= Just (AtomURI $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
@@ -87,7 +84,7 @@ personCase = testCase "Person construct" $ do
 
 generatorCase :: TestTree
 generatorCase = testCase "Generator element" $ do
-  result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <generator>" atomGenerator
+  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <generator>" atomGenerator
   result ^. generatorUriL @?= Just (AtomURI $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
   (result ^. generatorVersionL) @?= "1.0"
   toNullable (result ^. generatorContentL) @?= "Example Toolkit"
@@ -99,7 +96,7 @@ generatorCase = testCase "Generator element" $ do
 
 sourceCase :: TestTree
 sourceCase = testCase "Source element" $ do
-  result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <source>" atomSource
+  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <source>" atomSource
   (result ^. sourceIdL) @?= "http://example.org/"
   (result ^. sourceTitleL) @?= Just (AtomPlainText TypeText "Fourty-Two")
   show <$> (result ^. sourceUpdatedL) @?= Just "2003-12-13 18:30:02 UTC"
@@ -115,7 +112,7 @@ sourceCase = testCase "Source element" $ do
 
 textConstructCase :: TestTree
 textConstructCase = testCase "Text construct" $ do
-  a:b:c:_ <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.many (atomText "title")
+  a:b:c:_ <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.many (atomText "title")
   a @?= AtomPlainText TypeText "AT&T bought by SBC!"
   b @?= AtomPlainText TypeHTML "AT&amp;T bought <b>by SBC</b>!"
   c @?= AtomXHTMLText "AT&amp;T bought <b xmlns=\"http://www.w3.org/1999/xhtml\"><em>by SBC</em></b>!"
@@ -133,7 +130,7 @@ textConstructCase = testCase "Text construct" $ do
 
 simpleCase :: TestTree
 simpleCase = testCase "Simple case" $ do
-  result <- runResourceT . runConduit $ sourceList input =$= XML.parseText' def =$= XML.force "Invalid <feed>" atomFeed
+  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <feed>" atomFeed
   return ()
   where input =
           [ "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
@@ -161,33 +158,13 @@ hlint = testCase "HLint check" $ do
   result <- HLint.hlint [ "test/", "Text/" ]
   Prelude.null result @?= True
 
-
-roundtripAtomTextProperty :: TestTree
-roundtripAtomTextProperty = testProperty "parse . render = id (AtomText)" $ \i -> either (const False) (Just i ==) (runConduit $ renderAtomText "test" i =$= atomText "test")
-
-roundtripAtomPersonProperty :: TestTree
-roundtripAtomPersonProperty = testProperty "parse . render = id (AtomPerson)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomPerson "test" i =$= XML.force "Invalid <test>" (atomPerson "test"))
-
-roundtripAtomCategoryProperty :: TestTree
-roundtripAtomCategoryProperty = testProperty "parse . render = id (AtomCategory)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomCategory i =$= XML.force "Invalid <category>" atomCategory)
-
-roundtripAtomLinkProperty :: TestTree
-roundtripAtomLinkProperty = testProperty "parse . render = id (AtomLink)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomLink i =$= XML.force "Invalid <link>" atomLink)
-
-roundtripAtomGeneratorProperty :: TestTree
-roundtripAtomGeneratorProperty = testProperty "parse . render = id (AtomGenerator)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomGenerator i =$= XML.force "Invalid <generator>" atomGenerator)
-
-roundtripAtomSourceProperty :: TestTree
-roundtripAtomSourceProperty = testProperty "parse . render = id (AtomSource)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomSource i =$= XML.force "Invalid <source>" atomSource)
-
-roundtripAtomContentProperty :: TestTree
-roundtripAtomContentProperty = testProperty "parse . render = id (AtomContent)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomContent i =$= XML.force "Invalid content" atomContent)
-
-roundtripAtomFeedProperty :: TestTree
-roundtripAtomFeedProperty = testProperty "parse . render = id (AtomFeed)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomFeed i =$= XML.force "Invalid <feed>" atomFeed)
-
-roundtripAtomEntryProperty :: TestTree
-roundtripAtomEntryProperty = testProperty "parse . render = id (AtomEntry)" $ \i -> either (const False) (i ==) (runConduit $ renderAtomEntry i =$= XML.force "Invalid <entry>" atomEntry)
+roundtripProperty :: Eq a => Arbitrary a => Show a
+                  => TestName -> (a -> Source Maybe Event) -> ConduitM Event Void Maybe (Maybe a) -> TestTree
+roundtripProperty name render parse = testProperty ("parse . render = id (" <> name <> ")") $ do
+  input <- arbitrary
+  let intermediate = fmap (decodeUtf8 . toByteString) $ runConduit $ render input =$= renderBuilder def =$= foldC
+      output = join $ runConduit $ render input =$= parse
+  return $ counterexample (show input <> " | " <> show intermediate <> " | " <> show output) $ Just input == output
 
 
 letter = choose ('a', 'z')
