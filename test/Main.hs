@@ -246,10 +246,11 @@ instance Arbitrary AtomSource where
 instance Arbitrary AtomContent where
   arbitrary = oneof
     [ AtomContentInlineText <$> arbitrary <*> arbitrary
-    , AtomContentInlineXHTML <$> arbitrary
+    , AtomContentInlineXHTML <$> (pack <$> listOf1 alphaNum)
     , AtomContentInlineOther <$> arbitrary <*> arbitrary
     , AtomContentOutOfLine <$> arbitrary <*> arbitrary
     ]
+  shrink = genericShrink
 
 instance Arbitrary AtomEntry where
   arbitrary = do
