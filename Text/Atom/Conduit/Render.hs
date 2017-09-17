@@ -41,16 +41,16 @@ import           URI.ByteString
 
 -- | Render the top-level @atom:feed@ element.
 renderAtomFeed :: (Monad m) => AtomFeed -> Source m Event
-renderAtomFeed f = tag "feed" (attr "xmlns" "http://www.w3.org/2005/Atom") $ do
+renderAtomFeed f = atomTag "feed" (attr "xmlns" "http://www.w3.org/2005/Atom") $ do
   forM_ (f^.feedAuthorsL) $ renderAtomPerson "author"
   forM_ (f^.feedCategoriesL) renderAtomCategory
   forM_ (f^.feedContributorsL) $ renderAtomPerson "contributor"
   forM_ (f^.feedEntriesL) renderAtomEntry
   forM_ (f^.feedGeneratorL) renderAtomGenerator
-  forM_ (feedIcon f) $ tag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
-  tag "id" mempty . content $ f^.feedIdL
+  forM_ (feedIcon f) $ atomTag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  atomTag "id" mempty . content $ f^.feedIdL
   forM_ (f^.feedLinksL) renderAtomLink
-  forM_ (feedLogo f) $ tag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  forM_ (feedLogo f) $ atomTag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
   forM_ (f^.feedRightsL) $ renderAtomText "rights"
   forM_ (f^.feedSubtitleL) $ renderAtomText "subtitle"
   renderAtomText "title" $ f^.feedTitleL
@@ -58,12 +58,12 @@ renderAtomFeed f = tag "feed" (attr "xmlns" "http://www.w3.org/2005/Atom") $ do
 
 -- | Render an @atom:entry@ element.
 renderAtomEntry :: (Monad m) => AtomEntry -> Source m Event
-renderAtomEntry e = tag "entry" mempty $ do
+renderAtomEntry e = atomTag "entry" mempty $ do
   forM_ (e^.entryAuthorsL) $ renderAtomPerson "author"
   forM_ (e^.entryCategoriesL) renderAtomCategory
   forM_ (e^.entryContentL) renderAtomContent
   forM_ (e^.entryContributorsL) $ renderAtomPerson "contributor"
-  tag "id" mempty . content $ e^.entryIdL
+  atomTag "id" mempty . content $ e^.entryIdL
   forM_ (e^.entryLinksL) renderAtomLink
   forM_ (e^.entryPublishedL) $ dateTag "published"
   forM_ (e^.entryRightsL) $ renderAtomText "rights"
@@ -74,24 +74,24 @@ renderAtomEntry e = tag "entry" mempty $ do
 
 -- | Render an @atom:content@ element.
 renderAtomContent :: (Monad m) => AtomContent -> Source m Event
-renderAtomContent (AtomContentInlineXHTML t) = tag "content" (attr "type" "xhtml")
-  . tag "div" mempty $ content t
-renderAtomContent (AtomContentOutOfLine ctype uri) = tag "content" (nonEmptyAttr "type" ctype <> attr "src" (decodeUtf8 $ withAtomURI serializeURIRef' uri)) $ return ()
-renderAtomContent (AtomContentInlineText TypeHTML t) = tag "content" (attr "type" "html") $ content t
-renderAtomContent (AtomContentInlineText TypeText t) = tag "content" mempty $ content t
-renderAtomContent (AtomContentInlineOther ctype t) = tag "content" (attr "type" ctype) $ content t
+renderAtomContent (AtomContentInlineXHTML t) = atomTag "content" (attr "type" "xhtml")
+  . tag "{http://www.w3.org/1999/xhtml}div" mempty $ content t
+renderAtomContent (AtomContentOutOfLine ctype uri) = atomTag "content" (nonEmptyAttr "type" ctype <> attr "src" (decodeUtf8 $ withAtomURI serializeURIRef' uri)) $ return ()
+renderAtomContent (AtomContentInlineText TypeHTML t) = atomTag "content" (attr "type" "html") $ content t
+renderAtomContent (AtomContentInlineText TypeText t) = atomTag "content" mempty $ content t
+renderAtomContent (AtomContentInlineOther ctype t) = atomTag "content" (attr "type" ctype) $ content t
 
 -- | Render an @atom:source@ element.
 renderAtomSource :: (Monad m) => AtomSource -> Source m Event
-renderAtomSource s = tag "source" mempty $ do
+renderAtomSource s = atomTag "source" mempty $ do
   forM_ (s^.sourceAuthorsL) $ renderAtomPerson "author"
   forM_ (s^.sourceCategoriesL) renderAtomCategory
   forM_ (s^.sourceContributorsL) $ renderAtomPerson "contributor"
   forM_ (s^.sourceGeneratorL) renderAtomGenerator
-  forM_ (sourceIcon s) $ tag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
-  unless (Text.null $ s^.sourceIdL) . tag "id" mempty . content $ s^.sourceIdL
+  forM_ (sourceIcon s) $ atomTag "icon" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  unless (Text.null $ s^.sourceIdL) . atomTag "id" mempty . content $ s^.sourceIdL
   forM_ (s^.sourceLinksL) renderAtomLink
-  forM_ (sourceLogo s) $ tag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+  forM_ (sourceLogo s) $ atomTag "logo" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
   forM_ (s^.sourceRightsL) $ renderAtomText "rights"
   forM_ (s^.sourceSubtitleL) $ renderAtomText "subtitle"
   forM_ (s^.sourceTitleL) $ renderAtomText "title"
@@ -99,13 +99,13 @@ renderAtomSource s = tag "source" mempty $ do
 
 -- | Render an @atom:generator@ element.
 renderAtomGenerator :: (Monad m) => AtomGenerator -> Source m Event
-renderAtomGenerator g = tag "generator" attributes . content . toNullable $ g^.generatorContentL
+renderAtomGenerator g = atomTag "generator" attributes . content . toNullable $ g^.generatorContentL
   where attributes = optionalAttr "uri" (decodeUtf8 . withAtomURI serializeURIRef' <$> generatorUri g)
                      <> nonEmptyAttr "version" (g^.generatorVersionL)
 
 -- | Render an @atom:link@ element.
 renderAtomLink :: (Monad m) => AtomLink -> Source m Event
-renderAtomLink l = tag "link" linkAttrs $ return ()
+renderAtomLink l = atomTag "link" linkAttrs $ return ()
   where linkAttrs = attr "href" (decodeUtf8 . withAtomURI serializeURIRef' $ linkHref l)
                     <> nonEmptyAttr "rel" (l^.linkRelL)
                     <> nonEmptyAttr "type" (l^.linkTypeL)
@@ -115,28 +115,30 @@ renderAtomLink l = tag "link" linkAttrs $ return ()
 
 -- | Render an @atom:category@ element.
 renderAtomCategory :: (Monad m) => AtomCategory -> Source m Event
-renderAtomCategory c = tag "category" attributes $ return ()
+renderAtomCategory c = atomTag "category" attributes $ return ()
   where attributes = attr "term" (toNullable $ c^.categoryTermL)
                      <> nonEmptyAttr "scheme" (c^.categorySchemeL)
                      <> nonEmptyAttr "label" (c^.categoryLabelL)
 
 -- | Render an atom person construct.
-renderAtomPerson :: (Monad m) => Name -> AtomPerson -> Source m Event
-renderAtomPerson name p = tag name mempty $ do
-  tag "name" mempty . content . toNullable $ p^.personNameL
-  unless (Text.null $ p^.personEmailL) $ tag "email" mempty . content $ p^.personEmailL
-  forM_ (personUri p) $ tag "uri" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
+renderAtomPerson :: (Monad m) => Text -> AtomPerson -> Source m Event
+renderAtomPerson name p = atomTag name mempty $ do
+  atomTag "name" mempty . content . toNullable $ p^.personNameL
+  unless (Text.null $ p^.personEmailL) $ atomTag "email" mempty . content $ p^.personEmailL
+  forM_ (personUri p) $ atomTag "uri" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
 
 -- | Render an atom text construct.
-renderAtomText :: (Monad m) => Name -> AtomText -> Source m Event
-renderAtomText name (AtomXHTMLText t) = tag name (attr "type" "xhtml")
-  . tag "div" mempty $ content t
-renderAtomText name (AtomPlainText TypeHTML t) = tag name (attr "type" "html") $ content t
-renderAtomText name (AtomPlainText TypeText t) = tag name mempty $ content t
+renderAtomText :: (Monad m) => Text -> AtomText -> Source m Event
+renderAtomText name (AtomXHTMLText t) = atomTag name (attr "type" "xhtml")
+  . tag "{http://www.w3.org/1999/xhtml}div" mempty $ content t
+renderAtomText name (AtomPlainText TypeHTML t) = atomTag name (attr "type" "html") $ content t
+renderAtomText name (AtomPlainText TypeText t) = atomTag name mempty $ content t
 
+atomTag :: Monad m => Text -> Attributes -> Source m Event -> Source m Event
+atomTag name = tag (Name name (Just "http://www.w3.org/2005/Atom") (Just "atom"))
 
-dateTag :: (Monad m) => Name -> UTCTime -> Source m Event
-dateTag name = tag name mempty . content . formatTimeRFC3339 . utcToZonedTime utc
+dateTag :: (Monad m) => Text -> UTCTime -> Source m Event
+dateTag name = atomTag name mempty . content . formatTimeRFC3339 . utcToZonedTime utc
 
 nonEmptyAttr :: Name -> Text -> Attributes
 nonEmptyAttr name value
