@@ -115,7 +115,7 @@ textConstructCase = testCase "Text construct" $ do
   a:b:c:_ <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.many (atomText "title")
   a @?= AtomPlainText TypeText "AT&T bought by SBC!"
   b @?= AtomPlainText TypeHTML "AT&amp;T bought <b>by SBC</b>!"
-  c @?= AtomXHTMLText "AT&amp;T bought <b xmlns=\"http://www.w3.org/1999/xhtml\"><em>by SBC</em></b>!"
+  c @?= AtomXHTMLText "AT&amp;T bought <b xmlns=\"http://www.w3.org/1999/xhtml\"><em>by SBC</em></b>&lt;!"
   where input =
           [ "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"text\">AT&amp;T bought by SBC!</title>"
           , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"html\">"
@@ -123,7 +123,7 @@ textConstructCase = testCase "Text construct" $ do
           , "</title>"
           , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"xhtml\">"
           , "<div xmlns=\"http://www.w3.org/1999/xhtml\">"
-          , "AT&amp;T bought <b><em>by SBC</em></b>!"
+          , "AT&amp;T bought <b><em>by SBC</em></b>&lt;!"
           , "</div>"
           , "</title>"
           ]
