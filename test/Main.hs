@@ -16,7 +16,6 @@ import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
 import           Data.Void
 import           Data.XML.Types
-import qualified Language.Haskell.HLint       as HLint (hlint)
 import           Lens.Simple
 import           Test.QuickCheck.Instances
 import           Test.Tasty
@@ -35,7 +34,6 @@ main :: IO ()
 main = defaultMain $ testGroup "Tests"
   [ unitTests
   , properties
-  , hlint
   ]
 
 unitTests :: TestTree
@@ -152,11 +150,6 @@ simpleCase = testCase "Simple case" $ do
           , "</feed>"
           ]
 
-
-hlint :: TestTree
-hlint = testCase "HLint check" $ do
-  result <- HLint.hlint [ "test/", "Text/" ]
-  Prelude.null result @?= True
 
 roundtripProperty :: Eq a => Arbitrary a => Show a
                   => TestName -> (a -> Source Maybe Event) -> ConduitM Event Void Maybe (Maybe a) -> TestTree
