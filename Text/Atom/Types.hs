@@ -32,12 +32,10 @@ module Text.Atom.Types (module Text.Atom.Types) where
 
 -- {{{ Imports
 import           Data.NonNull
-import           Data.Text           hiding (map)
+import           Data.Text           
 import           Data.Time.Clock
 import           Data.Time.LocalTime ()
-
 import           GHC.Generics
-
 import           URI.ByteString
 -- }}}
 

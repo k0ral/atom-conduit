@@ -30,7 +30,7 @@ import           Conduit                  (foldC, headC, headDefC, sinkList)
 
 import           Control.Applicative      hiding (many)
 import           Control.Exception.Safe   as Exception
-import           Control.Monad            hiding (foldM)
+import           Control.Monad
 import           Control.Monad.Fix
 
 import           Data.Conduit
@@ -47,7 +47,7 @@ import           Data.XML.Types
 
 import           Lens.Simple
 
-import           Prelude                  hiding (last, lookup)
+import           Prelude
 
 import           Text.Atom.Types
 import           Text.XML.Stream.Parse
