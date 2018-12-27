@@ -12,14 +12,18 @@ import           Data.Functor.Identity
 import           Data.Monoid
 import           Data.MonoTraversable
 import           Data.NonNull
+import           Data.String
 import           Data.Text                    as Text
 import           Data.Text.Encoding           as Text
+import qualified Data.Text.Lazy.Encoding      as Lazy
 import           Data.Time.Clock
 import           Data.Void
 import           Data.XML.Types
 import           Lens.Simple
+import           System.FilePath
 import           Test.QuickCheck.Instances
 import           Test.Tasty
+import           Test.Tasty.Golden            (findByExtension, goldenVsString)
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
 import           Text.Atom.Conduit.Parse      as Parser
@@ -27,15 +31,13 @@ import           Text.Atom.Conduit.Render     as Renderer
 import           Text.Atom.Lens
 import           Text.Atom.Types
 import           Text.Parser.Combinators
-import Text.XML.Stream.Render        (renderBuilder)
 import qualified Text.XML.Stream.Parse        as XML
 import           URI.ByteString
 
 main :: IO ()
-main = defaultMain $ testGroup "Tests"
-  [ unitTests
-  , properties
-  ]
+main = do
+  goldenTests <- genGoldenTests
+  defaultMain $ testGroup "Tests" [ unitTests, properties, goldenTests ]
 
 unitTests :: TestTree
 unitTests = testGroup "Unit tests"
@@ -44,8 +46,17 @@ unitTests = testGroup "Unit tests"
   , generatorCase
   , sourceCase
   , textConstructCase
-  , simpleCase
   ]
+
+genGoldenTests :: IO TestTree
+genGoldenTests = do
+  xmlFiles <- findByExtension [".xml"] "."
+
+  return $ testGroup "Atom golden tests" $ do
+    xmlFile <- xmlFiles
+    let goldenFile = addExtension xmlFile ".golden"
+        f file = fmap (Lazy.encodeUtf8 . fromString . show) $ runResourceT $ runConduit $ sourceFile file .| Conduit.decodeUtf8 .| XML.parseText' def .| XML.force "Invalid <feed>" atomFeed
+    return $ goldenVsString xmlFile goldenFile $ f xmlFile
 
 properties :: TestTree
 properties = testGroup "Properties"
@@ -127,33 +138,9 @@ textConstructCase = testCase "Text construct" $ do
           , "</title>"
           ]
 
-simpleCase :: TestTree
-simpleCase = testCase "Simple case" $ do
-  result <- runResourceT . runConduit $ yieldMany input =$= XML.parseText' def =$= XML.force "Invalid <feed>" atomFeed
-  return ()
-  where input =
-          [ "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
-          , "<feed xmlns=\"http://www.w3.org/2005/Atom\">"
-          , "<title type=\"text\">&lt;em&gt;Example&lt;/em&gt; Feed</title>"
-          , "<link href=\"http://example.org/\"/>"
-          , "<updated>2003-12-13T18:30:02Z</updated>"
-          , "<author>"
-          , "<name>John Doe</name>"
-          , "</author>"
-          , "<id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>"
-          , "<entry>"
-          , "<title>Atom-Powered Robots Run Amok</title>"
-          , "<link href=\"http://example.org/2003/12/13/atom03\"/>"
-          , "<id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>"
-          , "<updated>2003-12-13T18:30:02Z</updated>"
-          , "<summary>Some text.</summary>"
-          , "</entry>"
-          , "</feed>"
-          ]
-
 
 roundtripProperty :: Eq a => Arbitrary a => Show a
-                  => TestName -> (a -> Source Maybe Event) -> ConduitM Event Void Maybe (Maybe a) -> TestTree
+                  => TestName -> (a -> ConduitT () Event Maybe ()) -> ConduitM Event Void Maybe (Maybe a) -> TestTree
 roundtripProperty name render parse = testProperty ("parse . render = id (" <> name <> ")") $ do
   input <- arbitrary
   let output = join $ runConduit $ render input .| parse
