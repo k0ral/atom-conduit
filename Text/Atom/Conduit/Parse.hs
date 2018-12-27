@@ -100,10 +100,10 @@ tagIgnoreAttrs' :: MonadThrow m => Text -> ConduitM Event o m a -> ConduitM Even
 tagIgnoreAttrs' name handler = tagName' name ignoreAttrs $ const handler
 
 xhtmlContent :: MonadThrow m => ConduitM Event o m Text
-xhtmlContent = fmap (decodeUtf8 . toByteString) $ many_ takeAnyTreeContent =$= Render.renderBuilder def =$= foldC
+xhtmlContent = fmap (decodeUtf8 . toByteString) $ many_ takeAnyTreeContent .| Render.renderBuilder def .| foldC
 
 
-projectC :: Monad m => Fold a a' b b' -> Conduit a m b
+projectC :: Monad m => Fold a a' b b' -> ConduitT a b m ()
 projectC prism = fix $ \recurse -> do
   item <- await
   case (item, item ^? (_Just . prism)) of
@@ -111,7 +111,7 @@ projectC prism = fix $ \recurse -> do
     (Just _, _) -> recurse
     _           -> return ()
 
-headRequiredC :: MonadThrow m => Text -> Consumer a m a
+headRequiredC :: MonadThrow m => Text -> ConduitT a o m a
 headRequiredC e = liftMaybe (MissingElement e) =<< headC
 
 atomId :: MonadThrow m => ConduitM Event o m (Maybe Text)
@@ -138,11 +138,11 @@ makeTraversals ''PersonPiece
 -- >   <uri>http://example.com/~johndoe</uri>
 -- > </author>
 atomPerson :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomPerson)
-atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) =$= parser) <* many ignoreAnyTreeContent where
+atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) .| parser) <* many ignoreAnyTreeContent where
   parser = getZipConduit $ AtomPerson
-    <$> ZipConduit (projectC _PersonName =$= headRequiredC "Missing or invalid <name> element")
-    <*> ZipConduit (projectC _PersonEmail =$= headDefC "")
-    <*> ZipConduit (projectC _PersonUri =$= headC)
+    <$> ZipConduit (projectC _PersonName .| headRequiredC "Missing or invalid <name> element")
+    <*> ZipConduit (projectC _PersonEmail .| headDefC "")
+    <*> ZipConduit (projectC _PersonUri .| headC)
   piece = [ fmap PersonName <$> tagIgnoreAttrs' "name" (content >>= asNonNull)
           , fmap PersonEmail <$> tagIgnoreAttrs' "email" content
           , fmap PersonUri <$> tagIgnoreAttrs' "uri" (content >>= asURIReference)
@@ -245,20 +245,20 @@ makeTraversals ''SourcePiece
 -- >   <rights>© 2005 Example, Inc.</rights>
 -- > </source>
 atomSource :: MonadThrow m => ConduitM Event o m (Maybe AtomSource)
-atomSource = tagIgnoreAttrs' "source" $ manyYield' (choose piece) =$= zipConduit where
+atomSource = tagIgnoreAttrs' "source" $ manyYield' (choose piece) .| zipConduit where
   zipConduit = getZipConduit $ AtomSource
-    <$> ZipConduit (projectC _SourceAuthor =$= sinkList)
-    <*> ZipConduit (projectC _SourceCategory =$= sinkList)
-    <*> ZipConduit (projectC _SourceContributor =$= sinkList)
-    <*> ZipConduit (projectC _SourceGenerator =$= headC)
-    <*> ZipConduit (projectC _SourceIcon =$= headC)
-    <*> ZipConduit (projectC _SourceId =$= headDefC "")
-    <*> ZipConduit (projectC _SourceLink =$= sinkList)
-    <*> ZipConduit (projectC _SourceLogo =$= headC)
-    <*> ZipConduit (projectC _SourceRights =$= headC)
-    <*> ZipConduit (projectC _SourceSubtitle =$= headC)
-    <*> ZipConduit (projectC _SourceTitle =$= headC)
-    <*> ZipConduit (projectC _SourceUpdated =$= headC)
+    <$> ZipConduit (projectC _SourceAuthor .| sinkList)
+    <*> ZipConduit (projectC _SourceCategory .| sinkList)
+    <*> ZipConduit (projectC _SourceContributor .| sinkList)
+    <*> ZipConduit (projectC _SourceGenerator .| headC)
+    <*> ZipConduit (projectC _SourceIcon .| headC)
+    <*> ZipConduit (projectC _SourceId .| headDefC "")
+    <*> ZipConduit (projectC _SourceLink .| sinkList)
+    <*> ZipConduit (projectC _SourceLogo .| headC)
+    <*> ZipConduit (projectC _SourceRights .| headC)
+    <*> ZipConduit (projectC _SourceSubtitle .| headC)
+    <*> ZipConduit (projectC _SourceTitle .| headC)
+    <*> ZipConduit (projectC _SourceUpdated .| headC)
   piece = [ fmap SourceAuthor <$> atomPerson "author"
           , fmap SourceCategory <$> atomCategory
           , fmap SourceContributor <$> atomPerson "contributor"
@@ -291,20 +291,20 @@ makeTraversals ''EntryPiece
 
 -- | Parse an @atom:entry@ element.
 atomEntry :: MonadThrow m => ConduitM Event o m (Maybe AtomEntry)
-atomEntry = tagIgnoreAttrs' "entry" $ manyYield' (choose piece) =$= zipConduit where
+atomEntry = tagIgnoreAttrs' "entry" $ manyYield' (choose piece) .| zipConduit where
   zipConduit = getZipConduit $ AtomEntry
-    <$> ZipConduit (projectC _EntryAuthor =$= sinkList)
-    <*> ZipConduit (projectC _EntryCategory =$= sinkList)
-    <*> ZipConduit (projectC _EntryContent =$= headC)
-    <*> ZipConduit (projectC _EntryContributor =$= sinkList)
-    <*> ZipConduit (projectC _EntryId =$= headRequiredC "Missing <id> element")
-    <*> ZipConduit (projectC _EntryLink =$= sinkList)
-    <*> ZipConduit (projectC _EntryPublished =$= headC)
-    <*> ZipConduit (projectC _EntryRights =$= headC)
-    <*> ZipConduit (projectC _EntrySource =$= headC)
-    <*> ZipConduit (projectC _EntrySummary =$= headC)
-    <*> ZipConduit (projectC _EntryTitle =$= headRequiredC "Missing or invalid <title> element.")
-    <*> ZipConduit (projectC _EntryUpdated =$= headRequiredC "Missing or invalid <updated> element.")
+    <$> ZipConduit (projectC _EntryAuthor .| sinkList)
+    <*> ZipConduit (projectC _EntryCategory .| sinkList)
+    <*> ZipConduit (projectC _EntryContent .| headC)
+    <*> ZipConduit (projectC _EntryContributor .| sinkList)
+    <*> ZipConduit (projectC _EntryId .| headRequiredC "Missing <id> element")
+    <*> ZipConduit (projectC _EntryLink .| sinkList)
+    <*> ZipConduit (projectC _EntryPublished .| headC)
+    <*> ZipConduit (projectC _EntryRights .| headC)
+    <*> ZipConduit (projectC _EntrySource .| headC)
+    <*> ZipConduit (projectC _EntrySummary .| headC)
+    <*> ZipConduit (projectC _EntryTitle .| headRequiredC "Missing or invalid <title> element.")
+    <*> ZipConduit (projectC _EntryUpdated .| headRequiredC "Missing or invalid <updated> element.")
   piece = [ fmap EntryAuthor <$> atomPerson "author"
           , fmap EntryCategory <$> atomCategory
           , fmap EntryContent <$> atomContent
@@ -338,21 +338,21 @@ makeTraversals ''FeedPiece
 
 -- | Parse an @atom:feed@ element.
 atomFeed :: MonadThrow m => ConduitM Event o m (Maybe AtomFeed)
-atomFeed = tagIgnoreAttrs' "feed" $ manyYield' (choose piece) =$= zipConduit where
+atomFeed = tagIgnoreAttrs' "feed" $ manyYield' (choose piece) .| zipConduit where
   zipConduit = getZipConduit $ AtomFeed
-    <$> ZipConduit (projectC _FeedAuthor =$= sinkList)
-    <*> ZipConduit (projectC _FeedCategory =$= sinkList)
-    <*> ZipConduit (projectC _FeedContributor =$= sinkList)
-    <*> ZipConduit (projectC _FeedEntry =$= sinkList)
-    <*> ZipConduit (projectC _FeedGenerator =$= headC)
-    <*> ZipConduit (projectC _FeedIcon =$= headC)
-    <*> ZipConduit (projectC _FeedId =$= headRequiredC "Missing <id> element")
-    <*> ZipConduit (projectC _FeedLink =$= sinkList)
-    <*> ZipConduit (projectC _FeedLogo =$= headC)
-    <*> ZipConduit (projectC _FeedRights =$= headC)
-    <*> ZipConduit (projectC _FeedSubtitle =$= headC)
-    <*> ZipConduit (projectC _FeedTitle =$= headRequiredC "Missing <title> element.")
-    <*> ZipConduit (projectC _FeedUpdated =$= headRequiredC "Missing <updated> element.")
+    <$> ZipConduit (projectC _FeedAuthor .| sinkList)
+    <*> ZipConduit (projectC _FeedCategory .| sinkList)
+    <*> ZipConduit (projectC _FeedContributor .| sinkList)
+    <*> ZipConduit (projectC _FeedEntry .| sinkList)
+    <*> ZipConduit (projectC _FeedGenerator .| headC)
+    <*> ZipConduit (projectC _FeedIcon .| headC)
+    <*> ZipConduit (projectC _FeedId .| headRequiredC "Missing <id> element")
+    <*> ZipConduit (projectC _FeedLink .| sinkList)
+    <*> ZipConduit (projectC _FeedLogo .| headC)
+    <*> ZipConduit (projectC _FeedRights .| headC)
+    <*> ZipConduit (projectC _FeedSubtitle .| headC)
+    <*> ZipConduit (projectC _FeedTitle .| headRequiredC "Missing <title> element.")
+    <*> ZipConduit (projectC _FeedUpdated .| headRequiredC "Missing <updated> element.")
   piece = [ fmap FeedAuthor <$> atomPerson "author"
           , fmap FeedCategory <$> atomCategory
           , fmap FeedContributor <$> atomPerson "contributor"
