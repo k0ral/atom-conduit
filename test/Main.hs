@@ -214,7 +214,7 @@ instance Arbitrary AtomLink where
 
 instance Arbitrary AtomGenerator where
   arbitrary = do
-    Just content <- fromNullable . pack <$> listOf1 alphaNum
+    ~(Just content) <- fromNullable . pack <$> listOf1 alphaNum
     AtomGenerator <$> arbitrary <*> arbitrary <*> pure content
   shrink = genericShrink
 
