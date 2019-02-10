@@ -10,8 +10,6 @@ import           Data.Conduit.Combinators     as Conduit (decodeUtf8, fold,
 import           Data.Default
 import           Data.Functor.Identity
 import           Data.Monoid
-import           Data.MonoTraversable
-import           Data.NonNull
 import           Data.String
 import           Data.Text                    as Text
 import           Data.Text.Encoding           as Text
@@ -20,6 +18,7 @@ import           Data.Time.Clock
 import           Data.Void
 import           Data.XML.Types
 import           Lens.Simple
+import           Refined
 import           System.FilePath
 import           Test.QuickCheck.Instances
 import           Test.Tasty
@@ -81,7 +80,7 @@ linkCase = testCase "Link element" $ do
 personCase :: TestTree
 personCase = testCase "Person construct" $ do
   result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <author>" (atomPerson "author")
-  toNullable (result ^. personNameL) @?= "John Doe"
+  unrefine (result ^. personNameL) @?= "John Doe"
   result ^. personEmailL @?= "JohnDoe@example.com"
   result ^. personUriL @?= Just (AtomURI $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
   where input =
@@ -97,7 +96,7 @@ generatorCase = testCase "Generator element" $ do
   result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <generator>" atomGenerator
   result ^. generatorUriL @?= Just (AtomURI $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
   (result ^. generatorVersionL) @?= "1.0"
-  toNullable (result ^. generatorContentL) @?= "Example Toolkit"
+  unrefine (result ^. generatorContentL) @?= "Example Toolkit"
   where input =
           [ "<generator xmlns=\"http://www.w3.org/2005/Atom\" uri=\"/myblog.php\" version=\"1.0\">"
           , "Example Toolkit"
@@ -151,8 +150,10 @@ letter = choose ('a', 'z')
 digit = arbitrary `suchThat` isDigit
 alphaNum = oneof [letter, digit]
 
-instance (MonoFoldable a, Arbitrary a) => Arbitrary (NonNull a) where
-  arbitrary = impureNonNull <$> arbitrary `suchThat` (not . onull)
+instance Arbitrary (Refined (Not Null) Text) where
+  arbitrary = do
+    ~(Right text) <- refine <$> arbitrary `suchThat` (not . Text.null)
+    return text
 
 instance Arbitrary Scheme where
   arbitrary = do
@@ -214,7 +215,7 @@ instance Arbitrary AtomLink where
 
 instance Arbitrary AtomGenerator where
   arbitrary = do
-    ~(Just content) <- fromNullable . pack <$> listOf1 alphaNum
+    ~(Right content) <- refine . pack <$> listOf1 alphaNum
     AtomGenerator <$> arbitrary <*> arbitrary <*> pure content
   shrink = genericShrink
 

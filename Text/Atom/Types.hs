@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 -- | Atom is an XML-based Web content and metadata syndication format.
@@ -31,14 +32,21 @@
 module Text.Atom.Types (module Text.Atom.Types) where
 
 -- {{{ Imports
-import           Data.NonNull
-import           Data.Text           
+import           Control.Monad
+import           Data.Text as Text
 import           Data.Time.Clock
 import           Data.Time.LocalTime ()
+import           Data.Typeable
 import           GHC.Generics
+import           Refined
 import           URI.ByteString
 -- }}}
 
+-- | 'Predicate' on 'Text', true iff text is null.
+data Null deriving(Typeable)
+
+instance Predicate Null Text where
+  validate p value = unless (Text.null value) $ throwRefine $ RefineOtherException (typeOf p) "Text is not null"
 
 data AtomURI = forall a . AtomURI (URIRef a)
 
@@ -74,7 +82,7 @@ deriving instance Show AtomText
 
 -- | An atom person construct.
 data AtomPerson = AtomPerson
-  { personName  :: NonNull Text
+  { personName  :: Refined (Not Null) Text
   , personEmail :: Text
   , personUri   :: Maybe AtomURI
   }
@@ -82,11 +90,12 @@ data AtomPerson = AtomPerson
 deriving instance Eq AtomPerson
 deriving instance Ord AtomPerson
 deriving instance Generic AtomPerson
+-- deriving instance Read AtomPerson
 deriving instance Show AtomPerson
 
 -- | The @atom:category@ element.
 data AtomCategory = AtomCategory
-  { categoryTerm   :: NonNull Text
+  { categoryTerm   :: Refined (Not Null) Text
   , categoryScheme :: Text
   , categoryLabel  :: Text
   }
@@ -115,7 +124,7 @@ deriving instance Show AtomLink
 data AtomGenerator = AtomGenerator
   { generatorUri     :: Maybe AtomURI
   , generatorVersion :: Text
-  , generatorContent :: NonNull Text
+  , generatorContent :: Refined (Not Null) Text
   }
 
 deriving instance Eq AtomGenerator

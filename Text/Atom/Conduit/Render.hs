@@ -21,21 +21,17 @@ import           Text.Atom.Lens
 import           Text.Atom.Types
 
 import           Control.Monad
-
 import           Data.Conduit
 import           Data.Monoid
-import           Data.NonNull
 import           Data.Text              as Text
 import           Data.Text.Encoding
 import           Data.Time.Clock
 import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
-
 import           Lens.Simple
-
+import           Refined
 import           Text.XML.Stream.Render
-
 import           URI.ByteString
 -- }}}
 
@@ -99,7 +95,7 @@ renderAtomSource s = atomTag "source" mempty $ do
 
 -- | Render an @atom:generator@ element.
 renderAtomGenerator :: (Monad m) => AtomGenerator -> ConduitT () Event m ()
-renderAtomGenerator g = atomTag "generator" attributes . content . toNullable $ g^.generatorContentL
+renderAtomGenerator g = atomTag "generator" attributes . content . unrefine $ g^.generatorContentL
   where attributes = optionalAttr "uri" (decodeUtf8 . withAtomURI serializeURIRef' <$> generatorUri g)
                      <> nonEmptyAttr "version" (g^.generatorVersionL)
 
@@ -116,14 +112,14 @@ renderAtomLink l = atomTag "link" linkAttrs $ return ()
 -- | Render an @atom:category@ element.
 renderAtomCategory :: (Monad m) => AtomCategory -> ConduitT () Event m ()
 renderAtomCategory c = atomTag "category" attributes $ return ()
-  where attributes = attr "term" (toNullable $ c^.categoryTermL)
+  where attributes = attr "term" (unrefine $ c^.categoryTermL)
                      <> nonEmptyAttr "scheme" (c^.categorySchemeL)
                      <> nonEmptyAttr "label" (c^.categoryLabelL)
 
 -- | Render an atom person construct.
 renderAtomPerson :: (Monad m) => Text -> AtomPerson -> ConduitT () Event m ()
 renderAtomPerson name p = atomTag name mempty $ do
-  atomTag "name" mempty . content . toNullable $ p^.personNameL
+  atomTag "name" mempty . content . unrefine $ p^.personNameL
   unless (Text.null $ p^.personEmailL) $ atomTag "email" mempty . content $ p^.personEmailL
   forM_ (personUri p) $ atomTag "uri" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
 

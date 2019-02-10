@@ -25,30 +25,23 @@ module Text.Atom.Conduit.Parse
 
 -- {{{ Imports
 import           Blaze.ByteString.Builder (toByteString)
-
 import           Conduit                  (foldC, headC, headDefC, sinkList)
-
 import           Control.Applicative      hiding (many)
 import           Control.Exception.Safe   as Exception
 import           Control.Monad
 import           Control.Monad.Fix
-
 import           Data.Conduit
 import           Data.Maybe
 import           Data.Monoid
-import           Data.MonoTraversable
-import           Data.NonNull             (NonNull, fromNullable, toNullable)
 import           Data.Text                as Text (Text, unpack)
 import           Data.Text.Encoding
 import           Data.Time.Clock
 import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
-
 import           Lens.Simple
-
 import           Prelude
-
+import           Refined
 import           Text.Atom.Types
 import           Text.XML.Stream.Parse
 import qualified Text.XML.Stream.Render   as Render
@@ -78,9 +71,6 @@ asURIReference t = case (parseURI' t, parseRelativeRef' t) of
   (Left _, Left e) -> throwM $ InvalidURI e t
   where parseURI' = parseURI laxURIParserOptions . encodeUtf8
         parseRelativeRef' = parseRelativeRef laxURIParserOptions . encodeUtf8
-
-asNonNull :: (MonoFoldable a, MonadThrow m) => a -> m (NonNull a)
-asNonNull = liftMaybe NullElement . fromNullable
 
 liftMaybe :: (MonadThrow m, Exception e) => e -> Maybe a -> m a
 liftMaybe e = maybe (throw e) return
@@ -123,7 +113,7 @@ atomLogo = tagIgnoreAttrs' "logo" $ content >>= asURIReference
 -- }}}
 
 
-data PersonPiece = PersonName (NonNull Text)
+data PersonPiece = PersonName (Refined (Not Null) Text)
                  | PersonEmail Text
                  | PersonUri AtomURI
 
@@ -143,7 +133,7 @@ atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) .| parser) <
     <$> ZipConduit (projectC _PersonName .| headRequiredC "Missing or invalid <name> element")
     <*> ZipConduit (projectC _PersonEmail .| headDefC "")
     <*> ZipConduit (projectC _PersonUri .| headC)
-  piece = [ fmap PersonName <$> tagIgnoreAttrs' "name" (content >>= asNonNull)
+  piece = [ fmap PersonName <$> tagIgnoreAttrs' "name" (content >>= refineThrow)
           , fmap PersonEmail <$> tagIgnoreAttrs' "email" content
           , fmap PersonUri <$> tagIgnoreAttrs' "uri" (content >>= asURIReference)
           ]
@@ -155,7 +145,7 @@ atomPerson name = tagIgnoreAttrs' name $ (manyYield' (choose piece) .| parser) <
 -- > <category term="sports"/>
 atomCategory :: MonadThrow m => ConduitM Event o m (Maybe AtomCategory)
 atomCategory = tagName' "category" categoryAttrs $ \(t, s, l) -> do
-  term <- asNonNull t
+  term <- refineThrow t
   return $ AtomCategory term s l
   where categoryAttrs = (,,) <$> requireAttr "term"
                              <*> (requireAttr "scheme" <|> pure mempty)
@@ -216,7 +206,7 @@ atomText name = tagName' name (optional (requireAttr "type") <* ignoreAttrs) han
 -- >   Example Toolkit
 -- > </generator>
 atomGenerator :: MonadThrow m => ConduitM Event o m (Maybe AtomGenerator)
-atomGenerator = tagName' "generator" generatorAttrs $ \(uri, version) -> AtomGenerator uri version <$> (asNonNull =<< content)
+atomGenerator = tagName' "generator" generatorAttrs $ \(uri, version) -> AtomGenerator uri version <$> (refineThrow =<< content)
   where generatorAttrs = (,) <$> optional (requireAttr "uri" >>= asURIReference) <*> (requireAttr "version" <|> pure mempty) <* ignoreAttrs
 
 
