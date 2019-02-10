@@ -55,6 +55,7 @@ test-suite  Tests
         filepath -any,
         lens-simple -any,
         parsers -any,
+        pretty-simple -any,
         quickcheck-instances -any,
         refined -any,
         resourcet -any,

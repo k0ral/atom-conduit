@@ -30,6 +30,7 @@ import           Text.Atom.Conduit.Render     as Renderer
 import           Text.Atom.Lens
 import           Text.Atom.Types
 import           Text.Parser.Combinators
+import           Text.Pretty.Simple
 import qualified Text.XML.Stream.Parse        as XML
 import           URI.ByteString
 
@@ -54,7 +55,7 @@ genGoldenTests = do
   return $ testGroup "Atom golden tests" $ do
     xmlFile <- xmlFiles
     let goldenFile = addExtension xmlFile ".golden"
-        f file = fmap (Lazy.encodeUtf8 . fromString . show) $ runResourceT $ runConduit $ sourceFile file .| Conduit.decodeUtf8 .| XML.parseText' def .| XML.force "Invalid <feed>" atomFeed
+        f file = fmap (Lazy.encodeUtf8 . pShowNoColor) $ runResourceT $ runConduit $ sourceFile file .| Conduit.decodeUtf8 .| XML.parseText' def .| XML.force "Invalid <feed>" atomFeed
     return $ goldenVsString xmlFile goldenFile $ f xmlFile
 
 properties :: TestTree
