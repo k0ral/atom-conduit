@@ -8,6 +8,8 @@ import           Data.Text.Encoding           as Text
 import           Data.Time.Clock
 import           Data.Void
 import           Data.XML.Types
+import           Prelude ()
+import           Prelude.Compat
 import           Refined
 import           Test.QuickCheck.Instances
 import           Test.Tasty
