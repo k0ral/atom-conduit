@@ -53,7 +53,6 @@ import           URI.ByteString
 data AtomException = InvalidDate Text
                    | InvalidURI URIParseError Text
                    | MissingElement Text
-                   | NullElement
 
 deriving instance Eq AtomException
 deriving instance Show AtomException
@@ -62,7 +61,6 @@ instance Exception AtomException where
   displayException (InvalidDate t)    = "Invalid date: " <> unpack t
   displayException (InvalidURI e t)   = "Invalid URI reference: " <> show e <> " in " <> unpack t
   displayException (MissingElement t) = "Missing element: " <> unpack t
-  displayException NullElement        = "Null element"
 
 asURIReference :: MonadThrow m => Text -> m AtomURI
 asURIReference t = case (parseURI' t, parseRelativeRef' t) of
