@@ -34,6 +34,7 @@ module Text.Atom.Types (module Text.Atom.Types) where
 -- {{{ Imports
 import           Control.Monad
 import           Data.Text as Text
+import           Data.Text.Prettyprint.Doc
 import           Data.Time.Clock
 import           Data.Time.LocalTime ()
 import           Data.Typeable
@@ -46,7 +47,7 @@ import           URI.ByteString
 data Null deriving(Typeable)
 
 instance Predicate Null Text where
-  validate p value = unless (Text.null value) $ throwRefine $ RefineOtherException (typeOf p) "Text is not null"
+  validate p value = unless (Text.null value) $ throwRefine $ RefineOtherException (typeOf p) $ "Text is not null: " <> pretty value
 
 data AtomURI = forall a . AtomURI (URIRef a)
 

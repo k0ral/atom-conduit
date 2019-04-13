@@ -43,6 +43,7 @@ library
         safe-exceptions -any,
         lens-simple -any,
         parsers -any,
+        prettyprinter -any,
         refined -any,
         text -any,
         time >=1.5,
