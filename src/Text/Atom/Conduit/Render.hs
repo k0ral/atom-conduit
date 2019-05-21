@@ -20,18 +20,19 @@ module Text.Atom.Conduit.Render
 import           Text.Atom.Lens
 import           Text.Atom.Types
 
+import           Conduit
 import           Control.Monad
-import           Data.Conduit
 import           Data.Monoid
 import           Data.Text              as Text
-import           Data.Text.Encoding
 import           Data.Time.Clock
 import           Data.Time.LocalTime
 import           Data.Time.RFC3339
 import           Data.XML.Types
 import           Lens.Simple
 import           Refined
+import           Text.XML as XML
 import           Text.XML.Stream.Render
+import qualified Text.XML.Unresolved as Unresolved
 import           URI.ByteString
 -- }}}
 
@@ -70,8 +71,7 @@ renderAtomEntry e = atomTag "entry" mempty $ do
 
 -- | Render an @atom:content@ element.
 renderAtomContent :: (Monad m) => AtomContent -> ConduitT () Event m ()
-renderAtomContent (AtomContentInlineXHTML t) = atomTag "content" (attr "type" "xhtml")
-  . tag "{http://www.w3.org/1999/xhtml}div" mempty $ content t
+renderAtomContent (AtomContentInlineXHTML element) = atomTag "content" (attr "type" "xhtml") $ yieldMany $ Unresolved.elementToEvents element
 renderAtomContent (AtomContentOutOfLine ctype uri) = atomTag "content" (nonEmptyAttr "type" ctype <> attr "src" (decodeUtf8 $ withAtomURI serializeURIRef' uri)) $ return ()
 renderAtomContent (AtomContentInlineText TypeHTML t) = atomTag "content" (attr "type" "html") $ content t
 renderAtomContent (AtomContentInlineText TypeText t) = atomTag "content" mempty $ content t
@@ -124,9 +124,8 @@ renderAtomPerson name p = atomTag name mempty $ do
   forM_ (personUri p) $ atomTag "uri" mempty . content . decodeUtf8 . withAtomURI serializeURIRef'
 
 -- | Render an atom text construct.
-renderAtomText :: (Monad m) => Text -> AtomText -> ConduitT () Event m ()
-renderAtomText name (AtomXHTMLText t) = atomTag name (attr "type" "xhtml")
-  . tag "{http://www.w3.org/1999/xhtml}div" mempty $ content t
+renderAtomText :: Monad m => Text -> AtomText -> ConduitT () Event m ()
+renderAtomText name (AtomXHTMLText element) = atomTag name (attr "type" "xhtml") $ yieldMany $ Unresolved.elementToEvents element
 renderAtomText name (AtomPlainText TypeHTML t) = atomTag name (attr "type" "html") $ content t
 renderAtomText name (AtomPlainText TypeText t) = atomTag name mempty $ content t
 

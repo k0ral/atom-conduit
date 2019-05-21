@@ -22,5 +22,5 @@ main = defaultMain =<< do
   return $ testGroup "Atom golden tests" $ do
     xmlFile <- xmlFiles
     let goldenFile = addExtension xmlFile ".golden"
-        f file = fmap (Lazy.encodeUtf8 . pShowNoColor) $ runResourceT $ runConduit $ sourceFile file .| Conduit.decodeUtf8 .| XML.parseText' def .| XML.force "Invalid <feed>" atomFeed
+        f file = fmap (Lazy.encodeUtf8 . pShowNoColor) $ runResourceT $ runConduit $ sourceFile file .| Conduit.decodeUtf8 .| XML.parseText def .| XML.force "Invalid <feed>" atomFeed
     return $ goldenVsString xmlFile goldenFile $ f xmlFile

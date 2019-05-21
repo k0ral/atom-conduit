@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeFamilies          #-}
 -- | Streaming parsers for the Atom 1.0 standard.
 module Text.Atom.Conduit.Parse
@@ -25,26 +26,24 @@ module Text.Atom.Conduit.Parse
 
 -- {{{ Imports
 import           Blaze.ByteString.Builder (toByteString)
-import           Conduit                  (foldC, headC, headDefC, sinkList)
+import           Conduit
 import           Control.Applicative      hiding (many)
 import           Control.Exception.Safe   as Exception
 import           Control.Monad
 import           Control.Monad.Fix
-import           Data.Conduit
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Text                as Text (Text, unpack)
-import           Data.Text.Encoding
 import           Data.Time.Clock
 import           Data.Time.LocalTime
 import           Data.Time.RFC3339
-import           Data.XML.Types
+import           Data.XML.Types as XML
 import           Lens.Simple
-import           Prelude
 import           Refined
 import           Text.Atom.Types
 import           Text.XML.Stream.Parse
 import qualified Text.XML.Stream.Render   as Render
+import qualified Text.XML.Unresolved as Unresolved
 
 import           URI.ByteString
 -- }}}
@@ -66,7 +65,7 @@ asURIReference :: MonadThrow m => Text -> m AtomURI
 asURIReference t = case (parseURI' t, parseRelativeRef' t) of
   (Right u, _)     -> return $ AtomURI u
   (_, Right u)     -> return $ AtomURI u
-  (Left _, Left e) -> throwM $ InvalidURI e t
+  (Left _, Left e) -> throw $ InvalidURI e t
   where parseURI' = parseURI laxURIParserOptions . encodeUtf8
         parseRelativeRef' = parseRelativeRef laxURIParserOptions . encodeUtf8
 
@@ -87,8 +86,8 @@ tagDate name = tagIgnoreAttrs' name $ do
 tagIgnoreAttrs' :: MonadThrow m => Text -> ConduitM Event o m a -> ConduitM Event o m (Maybe a)
 tagIgnoreAttrs' name handler = tagName' name ignoreAttrs $ const handler
 
-xhtmlContent :: MonadThrow m => ConduitM Event o m Text
-xhtmlContent = fmap (decodeUtf8 . toByteString) $ many_ takeAnyTreeContent .| Render.renderBuilder def .| foldC
+xhtmlContent :: MonadThrow m => ConduitM Event o m XML.Element
+xhtmlContent = force "element" $ many_ takeAnyTreeContent .| mapC (Nothing, ) .| Unresolved.elementFromEvents
 
 
 projectC :: Monad m => Fold a a' b b' -> ConduitT a b m ()
@@ -154,7 +153,7 @@ atomCategory = tagName' "category" categoryAttrs $ \(t, s, l) -> do
 atomContent :: MonadThrow m => ConduitM Event o m (Maybe AtomContent)
 atomContent = tagName' "content" contentAttrs handler where
   contentAttrs = (,) <$> optional (requireAttr "type") <*> optional (requireAttr "src" >>= asURIReference) <* ignoreAttrs
-  handler (Just "xhtml", _) = AtomContentInlineXHTML <$> force "<div>" (tagIgnoreAttrs "{http://www.w3.org/1999/xhtml}div" xhtmlContent)
+  handler (Just "xhtml", _) = AtomContentInlineXHTML <$> xhtmlContent
   handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
   handler (Just "html", _) = AtomContentInlineText TypeHTML <$> content
   handler (Nothing, _) = AtomContentInlineText TypeText <$> content
@@ -193,7 +192,7 @@ atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length')
 -- > </title>
 atomText :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomText)
 atomText name = tagName' name (optional (requireAttr "type") <* ignoreAttrs) handler
-  where handler (Just "xhtml") = AtomXHTMLText <$> force "<div>" (tagIgnoreAttrs "{http://www.w3.org/1999/xhtml}div" xhtmlContent)
+  where handler (Just "xhtml") = AtomXHTMLText <$> xhtmlContent
         handler (Just "html") = AtomPlainText TypeHTML <$> content
         handler _ = AtomPlainText TypeText <$> content
 

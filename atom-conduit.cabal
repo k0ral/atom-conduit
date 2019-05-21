@@ -25,9 +25,11 @@ flag enable-hlint-test
 
 common common
     build-depends:
-        base >=4.7 && <5,
-        base-compat-batteries
+        base-noprelude >=4.7 && <5,
+        relude
     default-language: Haskell2010
+    other-modules:
+        Prelude
 
 
 library
@@ -38,38 +40,42 @@ library
         Text.Atom.Lens
         Text.Atom.Types
     build-depends:
-        blaze-builder -any,
+        blaze-builder,
         conduit >=1.3,
-        safe-exceptions -any,
-        lens-simple -any,
-        parsers -any,
-        prettyprinter -any,
-        refined -any,
-        text -any,
+        safe-exceptions,
+        lens-simple,
+        parsers,
+        prettyprinter,
+        refined,
+        text,
         time >=1.5,
         timerep >=2.0,
         uri-bytestring >=0.2,
-        xml-conduit >=1.5,
-        xml-types -any
+        xml-conduit >=1.9,
+        xml-types
+    hs-source-dirs: src
 
 test-suite quickcheck
     import: common
     type: exitcode-stdio-1.0
     main-is: QuickCheck.hs
     build-depends:
-        atom-conduit -any,
+        atom-conduit,
         conduit >=1.3,
-        quickcheck-instances -any,
-        refined -any,
-        tasty -any,
-        tasty-quickcheck -any,
+        generic-random,
+        QuickCheck,
+        quickcheck-instances,
+        refined,
+        tasty,
+        tasty-quickcheck,
         time >=1.5,
-        text -any,
+        text,
         uri-bytestring >=0.2,
-        xml-types -any
+        xml-conduit >=1.9,
+        xml-types
     hs-source-dirs: test
 
-test-suite golden-tests
+test-suite golden
     import: common
     type: exitcode-stdio-1.0
     main-is: GoldenTests.hs
@@ -83,10 +89,10 @@ test-suite golden-tests
         tasty -any,
         tasty-golden -any,
         text -any,
-        xml-conduit >=1.4
+        xml-conduit >=1.9
     hs-source-dirs: test
 
-test-suite unit-tests
+test-suite unit
     import: common
     type: exitcode-stdio-1.0
     main-is: UnitTests.hs
@@ -101,7 +107,8 @@ test-suite unit-tests
         tasty-hunit -any,
         time >=1.5,
         uri-bytestring >=0.2,
-        xml-conduit >=1.4
+        xml-conduit >=1.9,
+        xml-types
     hs-source-dirs: test
 
 test-suite hlint

@@ -38,9 +38,11 @@ import           Data.Text.Prettyprint.Doc
 import           Data.Time.Clock
 import           Data.Time.LocalTime ()
 import           Data.Typeable
+import           Data.XML.Types as XML
 import           GHC.Generics
 import           Refined
 import           URI.ByteString
+import qualified Text.Show as Text
 -- }}}
 
 -- | 'Predicate' on 'Text', true iff text is null.
@@ -64,7 +66,7 @@ instance Ord AtomURI where
   AtomURI a@RelativeRef{} `compare` AtomURI b@RelativeRef{} = a `compare` b
   AtomURI a@URI{} `compare` _ = LT
   AtomURI a@RelativeRef{} `compare` b = b `compare` AtomURI a
-instance Show AtomURI where
+instance Text.Show AtomURI where
   show (AtomURI a@URI{}) = show a
   show (AtomURI a@RelativeRef{}) = show a
 
@@ -74,7 +76,7 @@ data TextType = TypeText | TypeHTML
 
 -- | An atom text construct.
 data AtomText = AtomPlainText TextType Text
-              | AtomXHTMLText Text -- ^ XHTML special characters will be in encoded form
+              | AtomXHTMLText XML.Element
 
 deriving instance Eq AtomText
 deriving instance Ord AtomText
@@ -154,13 +156,13 @@ deriving instance Ord AtomSource
 deriving instance Generic AtomSource
 deriving instance Show AtomSource
 
-type Type = Text
+type ContentType = Text
 
 -- | The @atom:content@ element.
 data AtomContent = AtomContentInlineText TextType Text
-                 | AtomContentInlineXHTML Text
-                 | AtomContentInlineOther Type Text
-                 | AtomContentOutOfLine Type AtomURI
+                 | AtomContentInlineXHTML XML.Element
+                 | AtomContentInlineOther ContentType Text
+                 | AtomContentOutOfLine ContentType AtomURI
 
 deriving instance Eq AtomContent
 deriving instance Ord AtomContent

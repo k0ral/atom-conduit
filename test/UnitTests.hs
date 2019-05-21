@@ -5,6 +5,7 @@ import           Data.Conduit
 import           Data.Conduit.Combinators     as Conduit (yieldMany)
 import           Data.Default
 import           Data.Time.Clock
+import           Data.XML.Types
 import           Lens.Simple
 import           Refined
 import           Test.Tasty
@@ -27,14 +28,14 @@ main = defaultMain $ testGroup "Unit tests"
 
 linkCase :: TestTree
 linkCase = testCase "Link element" $ do
-  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <link>" atomLink
+  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText def .| XML.force "Invalid <link>" atomLink
   result ^. linkHrefL @?= AtomURI (RelativeRef Nothing "/feed" (Query []) Nothing)
   (result ^. linkRelL) @?= "self"
   where input = ["<link xmlns=\"http://www.w3.org/2005/Atom\" rel=\"self\" href=\"/feed\" />"]
 
 personCase :: TestTree
 personCase = testCase "Person construct" $ do
-  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <author>" (atomPerson "author")
+  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText def .| XML.force "Invalid <author>" (atomPerson "author")
   unrefine (result ^. personNameL) @?= "John Doe"
   result ^. personEmailL @?= "JohnDoe@example.com"
   result ^. personUriL @?= Just (AtomURI $ URI (Scheme "http") (Just $ Authority Nothing (Host "example.com") Nothing) "/~johndoe" (Query []) Nothing)
@@ -48,7 +49,7 @@ personCase = testCase "Person construct" $ do
 
 generatorCase :: TestTree
 generatorCase = testCase "Generator element" $ do
-  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <generator>" atomGenerator
+  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText def .| XML.force "Invalid <generator>" atomGenerator
   result ^. generatorUriL @?= Just (AtomURI $ RelativeRef Nothing "/myblog.php" (Query []) Nothing)
   (result ^. generatorVersionL) @?= "1.0"
   unrefine (result ^. generatorContentL) @?= "Example Toolkit"
@@ -60,7 +61,7 @@ generatorCase = testCase "Generator element" $ do
 
 sourceCase :: TestTree
 sourceCase = testCase "Source element" $ do
-  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.force "Invalid <source>" atomSource
+  result <- runResourceT . runConduit $ yieldMany input .| XML.parseText def .| XML.force "Invalid <source>" atomSource
   (result ^. sourceIdL) @?= "http://example.org/"
   (result ^. sourceTitleL) @?= Just (AtomPlainText TypeText "Fourty-Two")
   show <$> (result ^. sourceUpdatedL) @?= Just "2003-12-13 18:30:02 UTC"
@@ -76,10 +77,14 @@ sourceCase = testCase "Source element" $ do
 
 textConstructCase :: TestTree
 textConstructCase = testCase "Text construct" $ do
-  a:b:c:_ <- runResourceT . runConduit $ yieldMany input .| XML.parseText' def .| XML.many (atomText "title")
+  a:b:c:_ <- runResourceT . runConduit $ yieldMany input .| XML.parseText def .| XML.many (atomText "title")
   a @?= AtomPlainText TypeText "AT&T bought by SBC!"
   b @?= AtomPlainText TypeHTML "AT&amp;T bought <b>by SBC</b>!"
-  c @?= AtomXHTMLText "AT&amp;T bought <b xmlns=\"http://www.w3.org/1999/xhtml\"><em>by SBC</em></b>&lt;!"
+  c @?= AtomXHTMLText (Element "{http://www.w3.org/1999/xhtml}div" []
+    [ NodeContent (ContentText "AT&T bought ")
+    , NodeElement (Element "{http://www.w3.org/1999/xhtml}b" [] [ NodeElement (Element "{http://www.w3.org/1999/xhtml}em" [] [NodeContent (ContentText "by SBC")]) ])
+    , NodeContent (ContentText "!")
+    ] )
   where input =
           [ "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"text\">AT&amp;T bought by SBC!</title>"
           , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"html\">"
@@ -87,7 +92,7 @@ textConstructCase = testCase "Text construct" $ do
           , "</title>"
           , "<title xmlns=\"http://www.w3.org/2005/Atom\" type=\"xhtml\">"
           , "<div xmlns=\"http://www.w3.org/1999/xhtml\">"
-          , "AT&amp;T bought <b><em>by SBC</em></b>&lt;!"
+          , "AT&amp;T bought <b><em>by SBC</em></b>!"
           , "</div>"
           , "</title>"
           ]

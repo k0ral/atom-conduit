@@ -3,15 +3,14 @@
 import           Control.Monad
 import           Data.Char
 import           Data.Conduit
-import           Data.Text                    as Text
-import           Data.Text.Encoding           as Text
+import           Data.Text                    as Text (Text, pack, null)
 import           Data.Time.Clock
 import           Data.Void
-import           Data.XML.Types
-import           Prelude ()
-import           Prelude.Compat
+import           Data.XML.Types as XML
+import           Generic.Random
 import           Refined
 import           Test.QuickCheck.Instances
+import           Test.QuickCheck.Modifiers
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
 import           Text.Atom.Conduit.Parse      as Parser
@@ -28,22 +27,48 @@ main = defaultMain $ testGroup "Properties"
   , roundtripProperty "AtomGenerator" renderAtomGenerator atomGenerator
   , roundtripProperty "AtomSource" renderAtomSource atomSource
   , roundtripProperty "AtomContent" renderAtomContent atomContent
-  -- , roundtripProperty "AtomEntry" renderAtomEntry atomEntry
-  -- , roundtripProperty "AtomFeed" renderAtomFeed atomFeed
+  , roundtripProperty "AtomEntry" renderAtomEntry atomEntry
+  , roundtripProperty "AtomFeed" renderAtomFeed atomFeed
   ]
 
 
 roundtripProperty :: Eq a => Arbitrary a => Show a
                   => TestName -> (a -> ConduitT () Event Maybe ()) -> ConduitM Event Void Maybe (Maybe a) -> TestTree
-roundtripProperty name render parse = testProperty ("parse . render = id (" <> name <> ")") $ do
-  input <- arbitrary
-  let output = join $ runConduit $ render input .| parse
-  return $ Just input == output
+roundtripProperty name render parse = testProperty ("parse . render = id (" <> name <> ")") $ \input -> Just input === join (runConduit $ render input .| parse)
 
 
-letter = choose ('a', 'z')
-digit = arbitrary `suchThat` isDigit
-alphaNum = oneof [letter, digit]
+newtype Letter = Letter { getLetter :: Char } deriving (Eq, Ord, Read, Show)
+
+instance Arbitrary Letter where
+  arbitrary = Letter <$> choose ('a', 'z')
+
+
+newtype Digit = Digit { getDigit :: Char } deriving (Eq, Ord, Read, Show)
+
+instance Arbitrary Digit where
+  arbitrary = Digit <$> (arbitrary `suchThat` isDigit)
+
+
+newtype NonEmptyText = NonEmptyText { getNonEmptyText :: Text } deriving(Eq, Ord, Read, Show)
+
+instance Arbitrary NonEmptyText where
+  arbitrary = NonEmptyText . Text.pack <$> (map getAlphaNumChar <$> listOf1 arbitrary)
+
+
+newtype AlphaNumChar = AlphaNumChar { getAlphaNumChar :: Char } deriving(Eq, Ord, Read, Show)
+
+instance Arbitrary AlphaNumChar where
+  arbitrary = AlphaNumChar <$> oneof [getLetter <$> arbitrary, getDigit <$> arbitrary]
+
+
+-- | 'UTCTime' with rounded seconds.
+newtype RoundedUTCTime = RoundedUTCTime { getRoundedUtcTime :: UTCTime } deriving(Eq, Ord, Read, Show)
+
+instance Arbitrary RoundedUTCTime where
+  arbitrary = RoundedUTCTime <$> do
+    (UTCTime d s) <- arbitrary
+    return $ UTCTime d (fromIntegral (round s :: Int))
+
 
 instance Arbitrary (Refined (Not Null) Text) where
   arbitrary = do
@@ -52,91 +77,154 @@ instance Arbitrary (Refined (Not Null) Text) where
 
 instance Arbitrary Scheme where
   arbitrary = do
-    a <- letter
-    b <- listOf $ oneof [letter, digit, pure '+', pure '-', pure '.']
+    a <- getLetter <$> arbitrary
+    b <- listOf $ frequency [(10, getAlphaNumChar <$> arbitrary), (1, pure '+'), (1, pure '-'), (1, pure '.')]
     return $ Scheme $ encodeUtf8 $ pack (a:b)
 
 instance Arbitrary Authority where
-  arbitrary = Authority <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
 instance Arbitrary UserInfo where
-  arbitrary = UserInfo <$> (encodeUtf8 . pack <$> listOf1 alphaNum)
-                       <*> (encodeUtf8 . pack <$> listOf1 alphaNum)
+  arbitrary = UserInfo <$> (encodeUtf8 . getNonEmptyText <$> arbitrary)
+                       <*> (encodeUtf8 . getNonEmptyText <$> arbitrary)
 
 instance Arbitrary Host where
-  arbitrary = Host <$> (encodeUtf8 . pack <$> listOf1 alphaNum)
+  arbitrary = Host <$> (encodeUtf8 . getNonEmptyText <$> arbitrary)
 
 instance Arbitrary Port where
   arbitrary = Port <$> (getPositive <$> arbitrary)
 
 instance Arbitrary Query where
-  arbitrary = Query <$> listOf ((,) <$> (encodeUtf8 . pack <$> listOf1 alphaNum) <*> (encodeUtf8 . pack <$> listOf1 alphaNum))
+  arbitrary = Query <$> listOf ((,) <$> (encodeUtf8 . getNonEmptyText <$> arbitrary) <*> (encodeUtf8 . getNonEmptyText <$> arbitrary))
 
 instance Arbitrary URI where
   arbitrary = URI <$> arbitrary
                   <*> arbitrary
-                  <*> (encodeUtf8 . pack . ('/' :) <$> listOf1 alphaNum)
+                  <*> (encodeUtf8 . ("/" <>) . getNonEmptyText <$> arbitrary)
                   <*> arbitrary
-                  <*> oneof [pure Nothing, Just <$> (encodeUtf8 . pack <$> listOf1 alphaNum)]
+                  <*> (fmap (encodeUtf8 . getNonEmptyText) <$> arbitrary)
 
 instance Arbitrary AtomURI where
   arbitrary = oneof [AtomURI <$> (arbitrary :: Gen (URIRef Absolute)), AtomURI <$> (arbitrary :: Gen (URIRef Relative))]
 
 instance Arbitrary RelativeRef where
   arbitrary = RelativeRef <$> arbitrary
-                          <*> (encodeUtf8 . pack . ('/' :) <$> listOf1 alphaNum)
+                          <*> (encodeUtf8 . ("/" <>) . getNonEmptyText <$> arbitrary)
                           <*> arbitrary
-                          <*> oneof [pure Nothing, Just <$> (encodeUtf8 . pack <$> listOf1 alphaNum)]
+                          <*> (fmap (encodeUtf8 . getNonEmptyText) <$> arbitrary)
 
 instance Arbitrary TextType where
-  arbitrary = elements [TypeText, TypeHTML]
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
+
+instance Arbitrary XML.Document where
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
+
+instance Arbitrary XML.Prologue where
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
+
+instance Arbitrary XML.Miscellaneous where
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
+
+instance Arbitrary XML.Instruction where
+  arbitrary = XML.Instruction <$> (getNonEmptyText <$> arbitrary) <*> (getNonEmptyText <$> arbitrary)
+
+instance Arbitrary XML.Doctype where
+  arbitrary = XML.Doctype
+    <$> (getNonEmptyText <$> arbitrary)
+    <*> arbitrary
+
+instance Arbitrary XML.ExternalID where
+  arbitrary = oneof
+    [ XML.SystemID <$> (getNonEmptyText <$> arbitrary)
+    , XML.PublicID <$> (getNonEmptyText <$> arbitrary) <*> (getNonEmptyText <$> arbitrary)
+    ]
+
+instance Arbitrary XML.Element where
+  arbitrary = scale (`div` 6) $ sized genElement
+
+instance Arbitrary XML.Node where
+  arbitrary = scale (`div` 5) $ sized genNode
+
+instance Arbitrary XML.Name where
+  arbitrary = XML.Name
+    <$> (getNonEmptyText <$> arbitrary)
+    <*> (fmap getNonEmptyText <$> arbitrary)
+    <*> arbitrary
+
+instance Arbitrary XML.Content where
+  arbitrary = frequency [(10, ContentText <$> (getNonEmptyText <$> arbitrary)), (1, ContentEntity <$> (getNonEmptyText <$> arbitrary))]
+
+genElement :: Int -> Gen XML.Element
+genElement 0 = XML.Element <$> arbitrary <*> arbitrary <*> pure []
+genElement n = XML.Element <$> arbitrary <*> arbitrary <*> (mergeNodes <$> listOf (genNode $ n `div` 2))
+
+genNode :: Int -> Gen XML.Node
+genNode 0 = oneof [XML.NodeInstruction <$> arbitrary, XML.NodeContent <$> arbitrary, XML.NodeComment <$> arbitrary]
+genNode n = oneof [XML.NodeElement <$> genElement n, XML.NodeInstruction <$> arbitrary, XML.NodeContent <$> arbitrary, XML.NodeComment <$> arbitrary]
+
+mergeNodes :: [Node] -> [Node]
+mergeNodes (NodeContent (ContentText a):NodeContent (ContentText b):t) = mergeNodes $ (NodeContent $ ContentText $ a <> b):t
+mergeNodes (node:t) = node:mergeNodes t
+mergeNodes [] = []
 
 instance Arbitrary AtomText where
-  arbitrary = oneof
-    [ AtomPlainText <$> arbitrary <*> (pack <$> listOf1 alphaNum)
-    , AtomXHTMLText <$> (pack <$> listOf1 alphaNum)
-    ]
+  arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
 instance Arbitrary AtomPerson where
-  arbitrary = AtomPerson <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
 
 instance Arbitrary AtomCategory where
-  arbitrary = AtomCategory <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
 
 instance Arbitrary AtomLink where
-  arbitrary = AtomLink <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = genericArbitrary uniform
+  shrink = genericShrink
 
 instance Arbitrary AtomGenerator where
-  arbitrary = do
-    ~(Right content) <- refine . pack <$> listOf1 alphaNum
-    AtomGenerator <$> arbitrary <*> arbitrary <*> pure content
+  arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
 instance Arbitrary AtomSource where
-  arbitrary = do
-    updated <- oneof [return Nothing, Just <$> genUtcTime]
-    AtomSource <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> pure updated
+  arbitrary = scale (`div` 5) $ AtomSource
+    <$> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> (fmap getRoundedUtcTime <$> arbitrary)
 
 instance Arbitrary AtomContent where
-  arbitrary = oneof
-    [ AtomContentInlineText <$> arbitrary <*> arbitrary
-    , AtomContentInlineXHTML <$> (pack <$> listOf1 alphaNum)
-    , AtomContentInlineOther <$> arbitrary <*> arbitrary
-    , AtomContentOutOfLine <$> arbitrary <*> arbitrary
-    ]
+  arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
 instance Arbitrary AtomEntry where
-  arbitrary = do
-    published <- oneof [return Nothing, Just <$> genUtcTime]
-    AtomEntry <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> pure published <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> genUtcTime
+  arbitrary = scale (`div` 5) $ AtomEntry
+    <$> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> (fmap getRoundedUtcTime <$> arbitrary)
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> arbitrary
+    <*> (getRoundedUtcTime <$> arbitrary)
 
 instance Arbitrary AtomFeed where
-  arbitrary = AtomFeed <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> genUtcTime
-
--- | Generates 'UTCTime' with rounded seconds.
-genUtcTime = do
-  (UTCTime d s) <- arbitrary
-  return $ UTCTime d (fromIntegral (round s :: Int))
+  arbitrary = scale (`div` 5) $ AtomFeed <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> (getRoundedUtcTime <$> arbitrary)
