@@ -1,11 +1,11 @@
 cabal-version: 2.2
 name: atom-conduit
-version: 0.7.0.0
+version: 0.8.0.0
 build-type: Simple
 license: CC0-1.0
 license-file: LICENSE
 author: koral
-maintainer: chahine.moreau@gmail.com
+maintainer: mail@cmoreau.info
 bug-reports: https://github.com/k0ral/atom-conduit/issues
 synopsis: Streaming parser/renderer for the Atom 1.0 standard (RFC 4287).
 description: Cf README.
