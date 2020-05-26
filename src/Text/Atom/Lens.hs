@@ -3,7 +3,7 @@
 module Text.Atom.Lens (module Text.Atom.Lens) where
 
 -- {{{ Imports
-import           Lens.Simple
+import           Lens.Micro.TH
 
 import           Text.Atom.Types
 
@@ -69,15 +69,12 @@ makeLensesFor
   , ("personUri", "personUriL")
   ] ''AtomPerson
 
---personUriL :: Traversal' AtomPerson (URIRef a)
---personUriL inj a@AtomPerson { personUri = u } = (\x -> a { personUri = x }) <$> traverse inj u
-
 makeLensesFor
   [ ("sourceAuthors", "sourceAuthorsL")
   , ("sourceCategories", "sourceCategoriesL")
   , ("sourceContributors", "sourceContributorsL")
   , ("sourceGenerator", "sourceGeneratorL")
-  -- , ("sourceIcon"
+  , ("sourceIcon", "sourceIconL")
   , ("sourceId", "sourceIdL")
   , ("sourceLinks", "sourceLinksL")
   , ("sourceLogo", "sourceLogoL")
@@ -87,4 +84,4 @@ makeLensesFor
   , ("sourceUpdated", "sourceUpdatedL")
   ] ''AtomSource
 
-makeTraversals ''AtomText
+--makeTraversals ''AtomText

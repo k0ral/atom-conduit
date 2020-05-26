@@ -6,7 +6,7 @@ import           Data.Conduit.Combinators     as Conduit (yieldMany)
 import           Data.Default
 import           Data.Time.Clock
 import           Data.XML.Types
-import           Lens.Simple
+import           Lens.Micro
 import           Refined
 import           Test.Tasty
 import           Test.Tasty.HUnit
