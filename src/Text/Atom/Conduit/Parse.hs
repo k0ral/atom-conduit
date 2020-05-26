@@ -156,9 +156,9 @@ atomContent = tagName' "content" contentAttrs handler where
   contentAttrs = (,) <$> optional (requireAttr "type") <*> optional (requireAttr "src" >>= asURIReference) <* ignoreAttrs
   handler (Just "xhtml", _) = AtomContentInlineXHTML <$> xhtmlContent
   handler (ctype, Just uri) = return $ AtomContentOutOfLine (fromMaybe mempty ctype) uri
-  handler (Just "html", _) = AtomContentInlineText TypeHTML <$> content
-  handler (Nothing, _) = AtomContentInlineText TypeText <$> content
-  handler (Just ctype, _) = AtomContentInlineOther ctype <$> content
+  handler (Just "html", _)  = AtomContentInlineText TypeHTML <$> content
+  handler (Nothing, _)      = AtomContentInlineText TypeText <$> content
+  handler (Just ctype, _)   = AtomContentInlineOther ctype <$> content
 
 -- | Parse an @atom:link@ element.
 -- Examples:
@@ -194,8 +194,8 @@ atomLink = tagName' "link" linkAttrs $ \(href, rel, ltype, lang, title, length')
 atomText :: MonadThrow m => Text -> ConduitM Event o m (Maybe AtomText)
 atomText name = tagName' name (optional (requireAttr "type") <* ignoreAttrs) handler
   where handler (Just "xhtml") = AtomXHTMLText <$> xhtmlContent
-        handler (Just "html") = AtomPlainText TypeHTML <$> content
-        handler _ = AtomPlainText TypeText <$> content
+        handler (Just "html")  = AtomPlainText TypeHTML <$> content
+        handler _              = AtomPlainText TypeText <$> content
 
 -- | Parse an @atom:generator@ element.
 -- Example:

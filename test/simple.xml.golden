@@ -1,78 +1,78 @@
-AtomFeed 
-    { feedAuthors = 
-        [ AtomPerson 
-            { personName = Refined "John Doe" 
-            , personEmail = "" 
+AtomFeed
+    { feedAuthors =
+        [ AtomPerson
+            { personName = Refined "John Doe"
+            , personEmail = ""
             , personUri = Nothing
-            } 
+            }
         ]
     , feedCategories = []
     , feedContributors = []
-    , feedEntries = 
-        [ AtomEntry 
+    , feedEntries =
+        [ AtomEntry
             { entryAuthors = []
             , entryCategories = []
             , entryContent = Nothing
             , entryContributors = []
-            , entryId = "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a" 
-            , entryLinks = 
-                [ AtomLink 
-                    { linkHref = URI 
+            , entryId = "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a"
+            , entryLinks =
+                [ AtomLink
+                    { linkHref = URI
                         { uriScheme = Scheme { schemeBS = "http" }
-                        , uriAuthority = Just 
-                            ( Authority 
+                        , uriAuthority = Just
+                            ( Authority
                                 { authorityUserInfo = Nothing
                                 , authorityHost = Host { hostBS = "example.org" }
                                 , authorityPort = Nothing
-                                } 
+                                }
                             )
-                        , uriPath = "/2003/12/13/atom03" 
+                        , uriPath = "/2003/12/13/atom03"
                         , uriQuery = Query { queryPairs = [] }
                         , uriFragment = Nothing
-                        } 
-                    , linkRel = "" 
-                    , linkType = "" 
-                    , linkLang = "" 
-                    , linkTitle = "" 
-                    , linkLength = "" 
-                    } 
+                        }
+                    , linkRel = ""
+                    , linkType = ""
+                    , linkLang = ""
+                    , linkTitle = ""
+                    , linkLength = ""
+                    }
                 ]
             , entryPublished = Nothing
             , entryRights = Nothing
             , entrySource = Nothing
             , entrySummary = Just ( AtomPlainText TypeText "Some text." )
-            , entryTitle = AtomPlainText TypeText "Atom-Powered Robots Run Amok" 
+            , entryTitle = AtomPlainText TypeText "Atom-Powered Robots Run Amok"
             , entryUpdated = 2003-12-13 18:30:02 UTC
-            } 
+            }
         ]
     , feedGenerator = Nothing
     , feedIcon = Nothing
-    , feedId = "urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6" 
-    , feedLinks = 
-        [ AtomLink 
-            { linkHref = URI 
+    , feedId = "urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6"
+    , feedLinks =
+        [ AtomLink
+            { linkHref = URI
                 { uriScheme = Scheme { schemeBS = "http" }
-                , uriAuthority = Just 
-                    ( Authority 
+                , uriAuthority = Just
+                    ( Authority
                         { authorityUserInfo = Nothing
                         , authorityHost = Host { hostBS = "example.org" }
                         , authorityPort = Nothing
-                        } 
+                        }
                     )
-                , uriPath = "/" 
+                , uriPath = "/"
                 , uriQuery = Query { queryPairs = [] }
                 , uriFragment = Nothing
-                } 
-            , linkRel = "" 
-            , linkType = "" 
-            , linkLang = "" 
-            , linkTitle = "" 
-            , linkLength = "" 
-            } 
+                }
+            , linkRel = ""
+            , linkType = ""
+            , linkLang = ""
+            , linkTitle = ""
+            , linkLength = ""
+            }
         ]
     , feedLogo = Nothing
     , feedRights = Nothing
     , feedSubtitle = Nothing
-    , feedTitle = AtomPlainText TypeText "<em>Example</em> Feed" 
+    , feedTitle = AtomPlainText TypeText "<em>Example</em> Feed"
     , feedUpdated = 2003-12-13 18:30:02 UTC
-    } 
+    }

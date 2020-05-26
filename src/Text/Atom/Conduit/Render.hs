@@ -30,9 +30,9 @@ import           Data.Time.RFC3339
 import           Data.XML.Types
 import           Lens.Micro
 import           Refined
-import           Text.XML as XML
+import           Text.XML               as XML
 import           Text.XML.Stream.Render
-import qualified Text.XML.Unresolved as Unresolved
+import qualified Text.XML.Unresolved    as Unresolved
 import           URI.ByteString
 -- }}}
 

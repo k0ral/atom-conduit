@@ -168,7 +168,7 @@ genNode 0 = oneof [XML.NodeInstruction <$> arbitrary, XML.NodeContent <$> arbitr
 genNode n = oneof [XML.NodeElement <$> genElement n, XML.NodeInstruction <$> arbitrary, XML.NodeContent <$> arbitrary, XML.NodeComment <$> arbitrary]
 
 mergeNodes :: [Node] -> [Node]
-mergeNodes (NodeContent (ContentText a):NodeContent (ContentText b):t) = mergeNodes $ (NodeContent $ ContentText $ a <> b):t
+mergeNodes (NodeContent (ContentText a):NodeContent (ContentText b):t) = mergeNodes $ NodeContent (ContentText $ a <> b):t
 mergeNodes (node:t) = node:mergeNodes t
 mergeNodes [] = []
 
