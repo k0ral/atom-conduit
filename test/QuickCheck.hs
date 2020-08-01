@@ -3,12 +3,13 @@
 import           Control.Monad
 import           Data.Char
 import           Data.Conduit
-import           Data.Text                    as Text (Text, pack, null)
+import           Data.Text                    as Text (Text, null, pack)
 import           Data.Time.Clock
 import           Data.Void
 import           Data.XML.Types as XML
 import           Generic.Random
 import           Refined
+import           Refined.Unsafe (reallyUnsafeRefine)
 import           Test.QuickCheck.Instances
 import           Test.QuickCheck.Modifiers
 import           Test.Tasty
@@ -69,11 +70,6 @@ instance Arbitrary RoundedUTCTime where
     (UTCTime d s) <- arbitrary
     return $ UTCTime d (fromIntegral (round s :: Int))
 
-
-instance Arbitrary (Refined (Not Null) Text) where
-  arbitrary = do
-    ~(Right text) <- refine <$> arbitrary `suchThat` (not . Text.null)
-    return text
 
 instance Arbitrary Scheme where
   arbitrary = do
@@ -172,16 +168,19 @@ mergeNodes (NodeContent (ContentText a):NodeContent (ContentText b):t) = mergeNo
 mergeNodes (node:t) = node:mergeNodes t
 mergeNodes [] = []
 
+genNotNullText :: Gen (Refined (Not Null) Text)
+genNotNullText = reallyUnsafeRefine <$> arbitrary `suchThat` (not . Text.null)
+
 instance Arbitrary AtomText where
   arbitrary = genericArbitrary uniform
   shrink = genericShrink
 
 instance Arbitrary AtomPerson where
-  arbitrary = genericArbitrary uniform
+  arbitrary = AtomPerson <$> genNotNullText <*> arbitrary <*> arbitrary
   shrink = genericShrink
 
 instance Arbitrary AtomCategory where
-  arbitrary = genericArbitrary uniform
+  arbitrary = AtomCategory <$> genNotNullText <*> arbitrary <*> arbitrary
   shrink = genericShrink
 
 instance Arbitrary AtomLink where
@@ -189,7 +188,7 @@ instance Arbitrary AtomLink where
   shrink = genericShrink
 
 instance Arbitrary AtomGenerator where
-  arbitrary = genericArbitrary uniform
+  arbitrary = AtomGenerator <$> arbitrary <*> arbitrary <*> genNotNullText
   shrink = genericShrink
 
 instance Arbitrary AtomSource where
