@@ -18,16 +18,19 @@ AtomFeed
             , entryLinks =
                 [ AtomLink
                     { linkHref = URI
-                        { uriScheme = Scheme { schemeBS = "http" }
+                        { uriScheme = Scheme
+                            { schemeBS = "http" }
                         , uriAuthority = Just
                             ( Authority
                                 { authorityUserInfo = Nothing
-                                , authorityHost = Host { hostBS = "example.org" }
+                                , authorityHost = Host
+                                    { hostBS = "example.org" }
                                 , authorityPort = Nothing
                                 }
                             )
                         , uriPath = "/2003/12/13/atom03"
-                        , uriQuery = Query { queryPairs = [] }
+                        , uriQuery = Query
+                            { queryPairs = [] }
                         , uriFragment = Nothing
                         }
                     , linkRel = ""
@@ -40,9 +43,10 @@ AtomFeed
             , entryPublished = Nothing
             , entryRights = Nothing
             , entrySource = Nothing
-            , entrySummary = Just ( AtomPlainText TypeText "Some text." )
+            , entrySummary = Just
+                ( AtomPlainText TypeText "Some text." )
             , entryTitle = AtomPlainText TypeText "Atom-Powered Robots Run Amok"
-            , entryUpdated = 2003-12-13 18:30:02 UTC
+            , entryUpdated = 2003 - 12 - 13 18 : 30 : 02 UTC
             }
         ]
     , feedGenerator = Nothing
@@ -51,16 +55,19 @@ AtomFeed
     , feedLinks =
         [ AtomLink
             { linkHref = URI
-                { uriScheme = Scheme { schemeBS = "http" }
+                { uriScheme = Scheme
+                    { schemeBS = "http" }
                 , uriAuthority = Just
                     ( Authority
                         { authorityUserInfo = Nothing
-                        , authorityHost = Host { hostBS = "example.org" }
+                        , authorityHost = Host
+                            { hostBS = "example.org" }
                         , authorityPort = Nothing
                         }
                     )
                 , uriPath = "/"
-                , uriQuery = Query { queryPairs = [] }
+                , uriQuery = Query
+                    { queryPairs = [] }
                 , uriFragment = Nothing
                 }
             , linkRel = ""
@@ -74,5 +81,5 @@ AtomFeed
     , feedRights = Nothing
     , feedSubtitle = Nothing
     , feedTitle = AtomPlainText TypeText "<em>Example</em> Feed"
-    , feedUpdated = 2003-12-13 18:30:02 UTC
+    , feedUpdated = 2003 - 12 - 13 18 : 30 : 02 UTC
     }

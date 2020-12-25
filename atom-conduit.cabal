@@ -86,7 +86,7 @@ test-suite golden
         conduit >=1.3,
         data-default,
         filepath,
-        pretty-simple,
+        pretty-simple >= 4,
         resourcet,
         tasty,
         tasty-golden,
